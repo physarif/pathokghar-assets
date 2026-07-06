@@ -117,7 +117,7 @@ def extract_html_files(zip_path, extract_dir):
     html_files = []
     for root, _, files in os.walk(extract_dir):
         for fn in files:
-            if fn.lower().endswith((".html", ".htm")):
+            if fn.lower().endswith((".html", ".htm", ".xhtml")):
                 html_files.append(os.path.join(root, fn))
     html_files.sort(key=numeric_key)
     return html_files
