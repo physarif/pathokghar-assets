@@ -19,7 +19,7 @@ jobs:
       - name: Install system tools + Bengali fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc calibre fonts-noto fonts-lohit-beng
+          sudo apt-get install -y pandoc calibre fonts-noto-core fonts-noto-extra fonts-lohit-beng-bengali
 
       - name: Set up Python
         uses: actions/setup-python@v5
