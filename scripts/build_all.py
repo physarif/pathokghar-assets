@@ -96,9 +96,32 @@ def guess_image_ext(path, url, content_type):
     return ".jpg"  # last-resort fallback guess
 
 
-def numeric_key(path):
-    m = re.match(r"(\d+)", os.path.basename(path))
-    return int(m.group(1)) if m else float("inf")
+def natural_sort_key(path, base_dir=None):
+    """Sort key that understands numbers anywhere in the path, not just a
+    leading digit in the filename. Handles patterns like chapter1.html,
+    chapter2.html, chapter10.html (numeric order, not string order) as
+    well as numbered folders like 01/index.html, 02/index.html. Falls back
+    to case-insensitive alphabetical order for the non-numeric parts so
+    files without any numbering still get a stable, sensible order instead
+    of the arbitrary order os.walk() happens to return."""
+    rel = os.path.relpath(path, base_dir) if base_dir else path
+    rel = rel.replace(os.sep, "/")
+    parts = re.split(r"(\d+)", rel)
+    return [int(p) if p.isdigit() else p.lower() for p in parts]
+
+
+HEADING_TAG_RE = re.compile(r"(</?)h[2-6](\b[^>]*)?(>)", re.IGNORECASE)
+
+
+def flatten_headings_to_h1(html_path):
+    """Rewrite every h2-h6 tag in the file to h1, preserving any attributes
+    on the tag. h1 tags are left untouched."""
+    with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    new_content = HEADING_TAG_RE.sub(lambda m: f"{m.group(1)}h1{m.group(2) or ''}{m.group(3)}", content)
+    if new_content != content:
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
 
 
 def list_pending_books(fmt, existing_names=None):
@@ -144,7 +167,9 @@ def extract_html_files(zip_path, extract_dir):
         for fn in files:
             if fn.lower().endswith((".html", ".htm", ".xhtml")):
                 html_files.append(os.path.join(root, fn))
-    html_files.sort(key=numeric_key)
+    html_files.sort(key=lambda p: natural_sort_key(p, extract_dir))
+    for hf in html_files:
+        flatten_headings_to_h1(hf)
     return html_files
 
 
@@ -162,8 +187,7 @@ def build_epub(book, html_files, cover_path, css_path, out_path, extract_dir=Non
     cmd = [
         "pandoc", *html_files,
         "-o", out_path,
-        "--split-level=2",
-        "--epub-title-page=false",
+        "--split-level=1",
         f"--metadata=title:{book['title']}",
         f"--metadata=author:{book.get('author_name', '')}",
     ]
@@ -179,6 +203,53 @@ def build_epub(book, html_files, cover_path, css_path, out_path, extract_dir=Non
             result.returncode, cmd,
             output=result.stdout, stderr=result.stderr,
         )
+    if cover_path:
+        remove_cover_page_from_reading_order(out_path)
+
+
+def remove_cover_page_from_reading_order(epub_path):
+    """Pandoc puts the cover image's own page (cover.xhtml) as the first
+    page you flip through. We want the cover to still show as the book's
+    thumbnail/cover in the reader's library (that comes from the manifest's
+    cover-image entry, which we leave untouched) but NOT be a page in the
+    reading flow, so the title page becomes page 1. This drops just the
+    <itemref idref="cover_xhtml".../> line from the spine."""
+    import shutil
+    import tempfile
+
+    tmp_dir = tempfile.mkdtemp(prefix="epub_fix_")
+    try:
+        with zipfile.ZipFile(epub_path) as z:
+            names = z.namelist()
+            z.extractall(tmp_dir)
+
+        opf_path = None
+        for root, _, files in os.walk(tmp_dir):
+            for fn in files:
+                if fn.endswith(".opf"):
+                    opf_path = os.path.join(root, fn)
+        if not opf_path:
+            return  # unexpected structure, leave the epub as-is
+
+        with open(opf_path, "r", encoding="utf-8") as f:
+            opf = f.read()
+        new_opf = re.sub(r'\s*<itemref[^>]*idref="cover_xhtml"[^>]*/>', "", opf)
+        if new_opf == opf:
+            return  # nothing to change
+        with open(opf_path, "w", encoding="utf-8") as f:
+            f.write(new_opf)
+
+        rebuilt_path = epub_path + ".rebuilt"
+        with zipfile.ZipFile(rebuilt_path, "w") as zout:
+            # mimetype must be the first entry and stored uncompressed
+            zout.write(os.path.join(tmp_dir, "mimetype"), "mimetype", compress_type=zipfile.ZIP_STORED)
+            for name in names:
+                if name == "mimetype":
+                    continue
+                zout.write(os.path.join(tmp_dir, name), name, compress_type=zipfile.ZIP_DEFLATED)
+        os.replace(rebuilt_path, epub_path)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def build_pdf_or_mobi(epub_path, out_path, css_path, fmt):
