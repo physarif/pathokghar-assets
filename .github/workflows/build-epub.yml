@@ -26,27 +26,25 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Fetch list of already-published epub files
+      - name: Delete previous EPUB release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view epub-books --json assets --jq '.assets[].name' > existing_epub.txt 2>/dev/null || touch existing_epub.txt
-          echo "Found $(wc -l < existing_epub.txt) existing epub file(s) in the release"
+          gh release delete epub-books --yes --cleanup-tag || echo "No previous release found, continuing"
 
-      - name: Build new epub books
+      - name: Build all epub books (fresh, no skipping)
         env:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
-        run: python scripts/build_all.py --format epub --existing-file existing_epub.txt
+        run: python scripts/build_all.py --format epub
 
-      - name: Upload new epub books to GitHub Release
+      - name: Upload epub books to a new GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
           files=(output/epub/*.epub)
           if [ ${#files[@]} -eq 0 ]; then
-            echo "Nothing new to upload"
-            exit 0
+            echo "No epub files were generated"
+            exit 1
           fi
-          gh release view epub-books >/dev/null 2>&1 || gh release create epub-books --title "EPUB Books" --notes "Auto-generated EPUB books. Files are added here by the Build EPUB workflow."
-          gh release upload epub-books "${files[@]}" --clobber
+          gh release create epub-books --title "EPUB Books" --notes "Auto-generated EPUB books. Fully regenerated on every run of the Build EPUB workflow." "${files[@]}"
