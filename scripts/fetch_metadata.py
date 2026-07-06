@@ -3,6 +3,12 @@ Fetch a single book's metadata (+ author name) from the Pathok Ghar
 Firebase Realtime Database, using the plain REST API (no Admin SDK needed
 if the DB rules allow public read on /books and /authors).
 
+Uses a server-side filtered query (orderBy="slug"&equalTo=...) so it only
+downloads the ONE matching book, not the entire /books node.
+NOTE: this requires a ".indexOn": ["slug"] rule on /books in the Realtime
+Database rules, otherwise Firebase still works but warns/slows down for
+large datasets. See README for the rule to add.
+
 Usage:
     python scripts/fetch_metadata.py <book-slug>
 
@@ -11,16 +17,20 @@ Writes: work/metadata.json
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 
 DB_URL = "https://pathokghar-default-rtdb.asia-southeast1.firebasedatabase.app"
 
 
-def fetch_json(path):
+def fetch_json(path, extra_params=None):
     auth = os.environ.get("FIREBASE_AUTH", "").strip()
-    url = f"{DB_URL}/{path}.json"
+    params = dict(extra_params or {})
     if auth:
-        url += f"?auth={auth}"
+        params["auth"] = auth
+    url = f"{DB_URL}/{path}.json"
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
     with urllib.request.urlopen(url) as r:
         return json.load(r)
 
@@ -32,17 +42,23 @@ def main():
 
     slug = sys.argv[1].strip()
 
-    books = fetch_json("books") or {}
-    book = None
-    for uid, b in books.items():
-        if b.get("slug") == slug:
-            book = dict(b)
-            book["uid"] = uid
-            break
+    # Server-side filtered query: only the matching book comes back over
+    # the wire, not the whole /books node.
+    result = fetch_json(
+        "books",
+        {
+            "orderBy": json.dumps("slug"),
+            "equalTo": json.dumps(slug),
+        },
+    ) or {}
 
-    if not book:
+    if not result:
         print(f"ERROR: no book found with slug '{slug}'", file=sys.stderr)
         sys.exit(1)
+
+    uid, book = next(iter(result.items()))
+    book = dict(book)
+    book["uid"] = uid
 
     author_name = ""
     if book.get("author"):
