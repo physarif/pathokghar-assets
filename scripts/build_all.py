@@ -54,14 +54,14 @@ def numeric_key(path):
     return int(m.group(1)) if m else float("inf")
 
 
-def list_pending_books(fmt):
+def list_pending_books(fmt, existing_names=None):
     print("Fetching all books...")
     books_raw = fetch_json("books") or {}
     print("Fetching all authors...")
     authors_raw = fetch_json("authors") or {}
 
-    out_dir = os.path.join("output", fmt)
     ext = EXT[fmt]
+    existing_names = existing_names or set()
 
     pending = []
     for uid, b in books_raw.items():
@@ -71,9 +71,9 @@ def list_pending_books(fmt):
         if not b.get("zip"):
             print(f"SKIP {slug}: no zip field in database")
             continue
-        out_path = os.path.join(out_dir, f"{slug}.{ext}")
-        if os.path.exists(out_path):
-            continue  # already built, in repo
+        filename = f"{slug}.{ext}"
+        if filename in existing_names:
+            continue  # already built and published in the release
         author_name = ""
         author_uid = b.get("author")
         if author_uid and author_uid in authors_raw:
@@ -135,15 +135,30 @@ def build_pdf_or_mobi(epub_path, out_path, css_path, fmt):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--format", required=True, choices=["epub", "pdf", "mobi"])
+    ap.add_argument(
+        "--existing-file",
+        default=None,
+        help=(
+            "Path to a text file listing filenames already published "
+            "(e.g. as GitHub release assets), one per line. Books whose "
+            "output filename appears here are skipped."
+        ),
+    )
     args = ap.parse_args()
     fmt = args.format
+
+    existing_names = set()
+    if args.existing_file and os.path.exists(args.existing_file):
+        with open(args.existing_file) as f:
+            existing_names = {line.strip() for line in f if line.strip()}
+        print(f"Loaded {len(existing_names)} already-published filenames from {args.existing_file}")
 
     os.makedirs(WORK, exist_ok=True)
     out_dir = os.path.join("output", fmt)
     os.makedirs(out_dir, exist_ok=True)
     css_path = os.path.join("styles", f"{fmt}.css")
 
-    pending = list_pending_books(fmt)
+    pending = list_pending_books(fmt, existing_names)
     print(f"New books to convert for '{fmt}': {len(pending)}")
     for b in pending:
         print(" -", b["slug"])
