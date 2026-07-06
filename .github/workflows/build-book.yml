@@ -43,4 +43,3 @@ jobs:
           files: |
             output/*.epub
             output/*.pdf
-            
