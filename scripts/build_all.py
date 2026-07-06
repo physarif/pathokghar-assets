@@ -148,7 +148,12 @@ def build_epub(book, html_files, cover_path, css_path, out_path, extract_dir=Non
         cmd.append(f"--epub-cover-image={cover_path}")
     if css_path and os.path.exists(css_path):
         cmd.append(f"--css={css_path}")
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd,
+            output=result.stdout, stderr=result.stderr,
+        )
 
 
 def build_pdf_or_mobi(epub_path, out_path, css_path, fmt):
@@ -163,7 +168,12 @@ def build_pdf_or_mobi(epub_path, out_path, css_path, fmt):
             "--pdf-mono-family", "Noto Sans Mono",
             "--paper-size", "a5",
         ]
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd,
+            output=result.stdout, stderr=result.stderr,
+        )
 
 
 def main():
@@ -197,6 +207,10 @@ def main():
     for b in pending:
         print(" -", b["slug"])
 
+    succeeded = []
+    failed = []
+    skipped = []
+
     for b in pending:
         slug = b["slug"]
         work_dir = os.path.join(WORK, slug)
@@ -209,6 +223,7 @@ def main():
             html_files = extract_html_files(zip_path, extract_dir)
             if not html_files:
                 print(f"[{slug}] SKIP: no HTML files in zip")
+                skipped.append((slug, "no HTML files in zip"))
                 continue
 
             cover_path = None
@@ -236,12 +251,32 @@ def main():
                 build_pdf_or_mobi(tmp_epub, out_path, css_path, fmt)
 
             print(f"[{slug}] DONE -> {out_path}")
+            succeeded.append(slug)
         except subprocess.CalledProcessError as e:
-            print(f"[{slug}] FAILED (conversion): {e}")
+            print(f"[{slug}] FAILED (conversion), command: {' '.join(map(str, e.cmd))}")
+            if e.stderr:
+                print(f"[{slug}] --- stderr ---\n{e.stderr}")
+            if e.output:
+                print(f"[{slug}] --- stdout ---\n{e.output}")
+            failed.append((slug, "conversion error (see stderr above)"))
             continue
         except Exception as e:
-            print(f"[{slug}] FAILED: {e}")
+            print(f"[{slug}] FAILED: {type(e).__name__}: {e}")
+            failed.append((slug, f"{type(e).__name__}: {e}"))
             continue
+
+    print("\n===== BUILD SUMMARY =====")
+    print(f"Succeeded: {len(succeeded)}")
+    print(f"Failed:    {len(failed)}")
+    print(f"Skipped:   {len(skipped)}")
+    if failed:
+        print("\nFailed books:")
+        for slug, reason in failed:
+            print(f"  - {slug}: {reason}")
+    if skipped:
+        print("\nSkipped books:")
+        for slug, reason in skipped:
+            print(f"  - {slug}: {reason}")
 
 
 if __name__ == "__main__":
