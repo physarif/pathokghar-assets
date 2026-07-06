@@ -1,11 +1,7 @@
-name: Build Book (EPUB + PDF)
+name: Build New Books (EPUB + PDF)
 
 on:
-  workflow_dispatch:
-    inputs:
-      slug:
-        description: "Book slug (e.g. octopus-er-chokh)"
-        required: true
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -27,19 +23,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Fetch metadata from Firebase
+      - name: Build all new books + create releases
         env:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
-        run: python scripts/fetch_metadata.py "${{ github.event.inputs.slug }}"
-
-      - name: Build EPUB + PDF
-        run: python scripts/build_book.py
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.slug }}
-          name: ${{ github.event.inputs.slug }}
-          files: |
-            output/*.epub
-            output/*.pdf
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/build_all.py
