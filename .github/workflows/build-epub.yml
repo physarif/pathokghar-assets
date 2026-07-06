@@ -26,15 +26,27 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Fetch list of already-published epub files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view epub-books --json assets --jq '.assets[].name' > existing_epub.txt 2>/dev/null || touch existing_epub.txt
+          echo "Found $(wc -l < existing_epub.txt) existing epub file(s) in the release"
+
       - name: Build new epub books
         env:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
-        run: python scripts/build_all.py --format epub
+        run: python scripts/build_all.py --format epub --existing-file existing_epub.txt
 
-      - name: Commit + push new files
+      - name: Upload new epub books to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add output/epub
-          git diff --cached --quiet && echo "Nothing new to commit" || git commit -m "Add new epub books [skip ci]"
-          git push
+          shopt -s nullglob
+          files=(output/epub/*.epub)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Nothing new to upload"
+            exit 0
+          fi
+          gh release view epub-books >/dev/null 2>&1 || gh release create epub-books --title "EPUB Books" --notes "Auto-generated EPUB books. Files are added here by the Build EPUB workflow."
+          gh release upload epub-books "${files[@]}" --clobber
