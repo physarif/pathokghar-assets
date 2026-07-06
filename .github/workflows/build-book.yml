@@ -1,0 +1,46 @@
+name: Build Book (EPUB + PDF)
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Book slug (e.g. octopus-er-chokh)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system tools (pandoc + calibre)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc calibre
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fetch metadata from Firebase
+        env:
+          FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
+        run: python scripts/fetch_metadata.py "${{ github.event.inputs.slug }}"
+
+      - name: Build EPUB + PDF
+        run: python scripts/build_book.py
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.slug }}
+          name: ${{ github.event.inputs.slug }}
+          files: |
+            output/*.epub
+            output/*.pdf
+            
