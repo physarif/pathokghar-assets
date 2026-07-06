@@ -47,6 +47,28 @@ def download(url, dest):
     req = urllib.request.Request(url, headers=BROWSER_HEADERS)
     with urllib.request.urlopen(req) as resp, open(dest, "wb") as out:
         out.write(resp.read())
+        return resp.headers.get("Content-Type", "")
+
+
+CONTENT_TYPE_EXT = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/bmp": ".bmp",
+}
+
+
+def guess_image_ext(url, content_type):
+    if content_type:
+        ct = content_type.split(";")[0].strip().lower()
+        if ct in CONTENT_TYPE_EXT:
+            return CONTENT_TYPE_EXT[ct]
+    url_ext = os.path.splitext(urllib.parse.urlparse(url).path)[1].lower()
+    if url_ext in CONTENT_TYPE_EXT.values():
+        return url_ext
+    return ".jpg"  # fallback guess
 
 
 def numeric_key(path):
@@ -101,7 +123,17 @@ def extract_html_files(zip_path, extract_dir):
     return html_files
 
 
-def build_epub(book, html_files, cover_path, css_path, out_path):
+def build_epub(book, html_files, cover_path, css_path, out_path, extract_dir=None):
+    resource_dirs = []
+    if extract_dir:
+        resource_dirs.append(extract_dir)
+    # Each HTML file may reference images relative to its own folder,
+    # so include every distinct parent directory as well.
+    for hf in html_files:
+        parent = os.path.dirname(hf)
+        if parent not in resource_dirs:
+            resource_dirs.append(parent)
+
     cmd = [
         "pandoc", *html_files,
         "-o", out_path,
@@ -110,6 +142,8 @@ def build_epub(book, html_files, cover_path, css_path, out_path):
         f"--metadata=title:{book['title']}",
         f"--metadata=author:{book.get('author_name', '')}",
     ]
+    if resource_dirs:
+        cmd.append(f"--resource-path={os.pathsep.join(resource_dirs)}")
     if cover_path:
         cmd.append(f"--epub-cover-image={cover_path}")
     if css_path and os.path.exists(css_path):
@@ -179,22 +213,25 @@ def main():
 
             cover_path = None
             if b.get("cover_url"):
-                cover_path = os.path.join(work_dir, "cover.jpg")
+                tmp_cover = os.path.join(work_dir, "cover_download")
                 try:
-                    download(b["cover_url"], cover_path)
+                    content_type = download(b["cover_url"], tmp_cover)
+                    ext = guess_image_ext(b["cover_url"], content_type)
+                    cover_path = os.path.join(work_dir, f"cover{ext}")
+                    os.replace(tmp_cover, cover_path)
                 except Exception as e:
                     print(f"[{slug}] cover download failed: {e}")
                     cover_path = None
 
             if fmt == "epub":
                 out_path = os.path.join(out_dir, f"{slug}.epub")
-                build_epub(b, html_files, cover_path, css_path, out_path)
+                build_epub(b, html_files, cover_path, css_path, out_path, extract_dir=extract_dir)
             else:
                 # pdf / mobi both go through an intermediate epub build
                 # (kept in work/, not committed) so chapter splitting stays
                 # consistent across all three formats.
                 tmp_epub = os.path.join(work_dir, f"{slug}.epub")
-                build_epub(b, html_files, cover_path, os.path.join("styles", "epub.css"), tmp_epub)
+                build_epub(b, html_files, cover_path, os.path.join("styles", "epub.css"), tmp_epub, extract_dir=extract_dir)
                 out_path = os.path.join(out_dir, f"{slug}.{EXT[fmt]}")
                 build_pdf_or_mobi(tmp_epub, out_path, css_path, fmt)
 
