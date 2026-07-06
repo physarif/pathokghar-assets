@@ -162,8 +162,8 @@ def build_epub(book, html_files, cover_path, css_path, out_path, extract_dir=Non
     cmd = [
         "pandoc", *html_files,
         "-o", out_path,
-        "--toc",
-        "--epub-chapter-level=2",
+        "--split-level=2",
+        "--epub-title-page=false",
         f"--metadata=title:{book['title']}",
         f"--metadata=author:{book.get('author_name', '')}",
     ]
