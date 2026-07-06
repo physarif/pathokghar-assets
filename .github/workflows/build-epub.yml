@@ -1,0 +1,40 @@
+name: Build EPUB
+
+on:
+  push:
+    paths:
+      - actions_epub
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system tools + Bengali fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc calibre fonts-noto fonts-lohit-beng
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build new epub books
+        env:
+          FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
+        run: python scripts/build_all.py --format epub
+
+      - name: Commit + push new files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/epub
+          git diff --cached --quiet && echo "Nothing new to commit" || git commit -m "Add new epub books [skip ci]"
+          git push
