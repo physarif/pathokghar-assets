@@ -1,0 +1,13 @@
+body {
+  font-family: serif;
+  line-height: 1.6;
+}
+
+h1, h2 {
+  text-align: center;
+}
+
+p {
+  margin: 0 0 1em 0;
+  text-indent: 1em;
+}

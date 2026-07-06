@@ -1,0 +1,22 @@
+body {
+  font-family: "Noto Serif Bengali", "Kalpurush", serif;
+  font-size: 14px;
+  line-height: 1.9;
+  text-align: justify;
+  margin: 2em;
+}
+
+h1, h2 {
+  font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;
+  text-align: center;
+  page-break-before: always;
+  color: #111;
+}
+
+h1 { font-size: 20px; margin-top: 0; }
+h2 { font-size: 17px; }
+
+p {
+  margin: 0 0 1.1em 0;
+  text-indent: 1.5em;
+}
