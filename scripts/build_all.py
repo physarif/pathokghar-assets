@@ -60,7 +60,32 @@ CONTENT_TYPE_EXT = {
 }
 
 
-def guess_image_ext(url, content_type):
+def sniff_image_ext(path):
+    """Detect the real image format from its file signature (magic bytes),
+    since servers often send a wrong or missing Content-Type header. This
+    is far more reliable than trusting headers or the URL's extension."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(16)
+    except OSError:
+        return None
+    if head.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp"
+    if head[:2] == b"BM":
+        return ".bmp"
+    return None
+
+
+def guess_image_ext(path, url, content_type):
+    sniffed = sniff_image_ext(path)
+    if sniffed:
+        return sniffed
     if content_type:
         ct = content_type.split(";")[0].strip().lower()
         if ct in CONTENT_TYPE_EXT:
@@ -68,7 +93,7 @@ def guess_image_ext(url, content_type):
     url_ext = os.path.splitext(urllib.parse.urlparse(url).path)[1].lower()
     if url_ext in CONTENT_TYPE_EXT.values():
         return url_ext
-    return ".jpg"  # fallback guess
+    return ".jpg"  # last-resort fallback guess
 
 
 def numeric_key(path):
@@ -231,7 +256,7 @@ def main():
                 tmp_cover = os.path.join(work_dir, "cover_download")
                 try:
                     content_type = download(b["cover_url"], tmp_cover)
-                    ext = guess_image_ext(b["cover_url"], content_type)
+                    ext = guess_image_ext(tmp_cover, b["cover_url"], content_type)
                     cover_path = os.path.join(work_dir, f"cover{ext}")
                     os.replace(tmp_cover, cover_path)
                 except Exception as e:
