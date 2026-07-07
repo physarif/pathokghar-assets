@@ -27,20 +27,24 @@ h1, h2, h3 {
   margin-top: 0;   
   margin-bottom: 0;
   text-align: center;
+
+  /* প্রতিটি heading নতুন পাতা থেকে শুরু হবে */
+  page-break-before: always;
+  break-before: page;
 }
 
 h1 {
-  font-size: 42px;
-  font-weight: 600;
-}
-
-h2 {
   font-size: 36px;
   font-weight: 600;
 }
 
+h2 {
+  font-size: 30px;
+  font-weight: 600;
+}
+
 h3 {
-  font-size: 32px;
+  font-size: 26px;
   font-weight: 500;
 }
 
