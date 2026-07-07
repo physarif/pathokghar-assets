@@ -366,6 +366,11 @@ def build_pdf_or_mobi(epub_path, out_path, css_path, fmt):
             "--pdf-standard-font", "serif",
             "--paper-size", "a6",  # A6 is narrow/mobile-like; CSS handles margins
             "--pdf-mono-font-size", "16",
+            # চার দিকের margin একেবারে শূন্য, যাতে লেখা পেজের একদম edge থেকে শুরু হয়
+            "--margin-left", "0",
+            "--margin-right", "0",
+            "--margin-top", "0",
+            "--margin-bottom", "0",
         ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -402,6 +407,14 @@ def main():
     css_path = os.path.join("styles", f"{fmt}.css")
 
     pending = list_pending_books(fmt, existing_names)
+
+    # ⚠️ TESTING MODE: শুধু প্রথম ৫টা বই build হবে, বাকিগুলো এখন skip।
+    # টেস্টিং শেষ হলে নিচের লাইন দুটো (TEST_LIMIT ও pending স্লাইসিং) মুছে ফেলুন।
+    TEST_LIMIT = 5
+    if len(pending) > TEST_LIMIT:
+        print(f"[TEST MODE] Limiting to first {TEST_LIMIT} of {len(pending)} pending books")
+        pending = pending[:TEST_LIMIT]
+
     print(f"New books to convert for '{fmt}': {len(pending)}")
     for b in pending:
         print(" -", b["slug"])
