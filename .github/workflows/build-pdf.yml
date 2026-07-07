@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - .github/workflows/build-pdf.yml
-      - scripts/build_all.py
+      - scripts/build_ebooks.py
       - actions_pdf
       - styles/pdf.css
   workflow_dispatch: {}
