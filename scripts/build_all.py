@@ -356,13 +356,24 @@ def build_pdf_or_mobi(epub_path, out_path, css_path, fmt):
         cmd.append(f"--extra-css={css_path}")
     if fmt == "pdf":
         cmd += [
-            "--pdf-default-font-size", "14",
+            "--pdf-default-font-size", "22",  # larger for mobile reading
             "--pdf-serif-family", "Noto Serif Bengali",
             "--pdf-sans-family", "Noto Sans Bengali",
             "--pdf-mono-family", "Noto Sans Mono",
-            "--paper-size", "a5",
+            "--pdf-standard-font", "serif",
+            "--paper-size", "100mm x 150mm",  # mobile-phone landscape w×h (narrow)
+            "--pdf-left-margin", "8mm",
+            "--pdf-right-margin", "8mm",
+            "--pdf-top-margin", "8mm",
+            "--pdf-bottom-margin", "8mm",
         ]
     result = subprocess.run(cmd, capture_output=True, text=True)
+    # If custom paper size fails in older Calibre, retry with fallback
+    if result.returncode != 0 and fmt == "pdf" and "100mm x 150mm" in cmd:
+        print(f"[{out_path}] custom paper size not supported, retrying with a6...")
+        cmd_fallback = cmd[:]
+        cmd_fallback[cmd_fallback.index("--paper-size") + 1] = "a6"
+        result = subprocess.run(cmd_fallback, capture_output=True, text=True)
     if result.returncode != 0:
         raise subprocess.CalledProcessError(
             result.returncode, cmd,
