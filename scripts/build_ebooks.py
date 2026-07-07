@@ -467,7 +467,8 @@ def build_pdf_html(book, html_files, cover_path, banner_image_path, css_path, ou
     print(f"  DEBUG: assembled {out_html_path} -> {len(final_html)} chars total")
     print(f"  DEBUG: has cover section: {'cover-page' in final_html}")
     print(f"  DEBUG: has donate section: {'donate-titlepage' in final_html}")
-    print(f"  DEBUG: chapter sections count: {final_html.count('class=\"chapter\"')}")
+    chapter_marker = 'class="chapter"'
+    print(f"  DEBUG: chapter sections count: {final_html.count(chapter_marker)}")
 
 
 def render_pdf_with_playwright(html_path, out_path):
