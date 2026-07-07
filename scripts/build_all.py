@@ -25,6 +25,11 @@ WORK = "work"
 
 EXT = {"epub": "epub", "pdf": "pdf", "mobi": "mobi"}
 
+# PDF-only: pandoc auto-generates a title+author page from --metadata
+# title/author. For PDF we replace that page with a centered banner image
+# and a donation message pinned to the bottom (see customize_pdf_title_page).
+PDF_DONATE_BANNER_URL = "https://pathokghar.pages.dev/assets/photos/og-banner.webp"
+
 BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -353,6 +358,103 @@ def remove_cover_page_from_reading_order(epub_path):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def customize_pdf_title_page(epub_path, banner_image_path):
+    """PDF-only. Pandoc auto-generates a title+author page
+    (EPUB/text/title_page.xhtml, <section class="titlepage">) from the
+    --metadata title/author flags in build_epub(). For PDF we don't want
+    that page at all: we replace its contents with a centered banner image
+    and a donation message pinned to the bottom of the page. epub/mobi are
+    untouched since this is only ever called when fmt == 'pdf'."""
+    import shutil
+    import tempfile
+
+    tmp_dir = tempfile.mkdtemp(prefix="epub_titlepage_")
+    try:
+        with zipfile.ZipFile(epub_path) as z:
+            names = z.namelist()
+            z.extractall(tmp_dir)
+
+        title_page_path = None
+        for root, _, files in os.walk(tmp_dir):
+            if "title_page.xhtml" in files:
+                title_page_path = os.path.join(root, "title_page.xhtml")
+                break
+        if not title_page_path:
+            print("  (no title_page.xhtml found, skipping PDF title-page customization)")
+            return
+
+        # Drop the banner image next to title_page.xhtml so a plain relative
+        # <img src="..."> resolves correctly inside the epub package.
+        text_dir = os.path.dirname(title_page_path)
+        ext = sniff_image_ext(banner_image_path) or ".webp"
+        image_filename = f"og-banner{ext}"
+        shutil.copy(banner_image_path, os.path.join(text_dir, image_filename))
+        # New file on disk, not part of the original zip's namelist(), so it
+        # must be added to the rebuild list explicitly below.
+        image_zip_name = os.path.relpath(os.path.join(text_dir, image_filename), tmp_dir)
+        names.append(image_zip_name)
+
+        with open(title_page_path, "r", encoding="utf-8") as f:
+            xhtml = f.read()
+
+        new_section = f"""<section epub:type="titlepage" class="titlepage donate-titlepage">
+  <div class="donate-banner">
+    <img src="{image_filename}" alt="পাঠক ঘর" />
+  </div>
+  <p class="donate-footer">
+    <b>পাঠক</b> <span class="donate-gray">ঘর</span> বিজ্ঞাপনমুক্ত রাখতে <b class="donate-red">ডোনেট</b> করুন। <span class="donate-number">01318069471</span> – (<span class="donate-bkash">bKash</span>, <span class="donate-nagad">Nagad</span> – Personal)
+  </p>
+</section>"""
+
+        xhtml, count = re.subn(
+            r'<section epub:type="titlepage" class="titlepage">.*?</section>',
+            new_section,
+            xhtml,
+            flags=re.DOTALL,
+        )
+        if count == 0:
+            print("  (title_page.xhtml didn't match expected structure, skipping)")
+            return
+
+        with open(title_page_path, "w", encoding="utf-8") as f:
+            f.write(xhtml)
+
+        # Register the new image in the .opf manifest so it's a proper,
+        # valid part of the epub package (not just a stray file next to
+        # title_page.xhtml).
+        opf_path = None
+        for root, _, files in os.walk(tmp_dir):
+            for fn in files:
+                if fn.endswith(".opf"):
+                    opf_path = os.path.join(root, fn)
+        if opf_path:
+            with open(opf_path, "r", encoding="utf-8") as f:
+                opf = f.read()
+            opf_dir = os.path.dirname(opf_path)
+            image_href = os.path.relpath(os.path.join(text_dir, image_filename), opf_dir).replace(os.sep, "/")
+            media_type = {
+                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+            }.get(ext, "image/webp")
+            manifest_item = (
+                f'<item id="donate_banner_image" href="{image_href}" media-type="{media_type}" />\n  </manifest>'
+            )
+            opf = opf.replace("</manifest>", manifest_item, 1)
+            with open(opf_path, "w", encoding="utf-8") as f:
+                f.write(opf)
+
+        rebuilt_path = epub_path + ".rebuilt"
+        with zipfile.ZipFile(rebuilt_path, "w") as zout:
+            zout.write(os.path.join(tmp_dir, "mimetype"), "mimetype", compress_type=zipfile.ZIP_STORED)
+            for name in names:
+                if name == "mimetype":
+                    continue
+                zout.write(os.path.join(tmp_dir, name), name, compress_type=zipfile.ZIP_DEFLATED)
+        os.replace(rebuilt_path, epub_path)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 def build_pdf_or_mobi(epub_path, out_path, fmt):
     # No --extra-css here: the intermediate epub was already built with the
     # target format's css baked in by pandoc (see caller), so this step just
@@ -423,6 +525,19 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     css_path = os.path.join("styles", f"{fmt}.css")
 
+    # PDF-only: download the donate banner once up front (same image for
+    # every book), so each book's build just copies it into its own epub.
+    pdf_banner_path = None
+    if fmt == "pdf":
+        pdf_banner_path = os.path.join(WORK, "donate_banner_download")
+        try:
+            download(PDF_DONATE_BANNER_URL, pdf_banner_path)
+            print(f"Downloaded PDF donate banner from {PDF_DONATE_BANNER_URL}")
+        except Exception as e:
+            print(f"WARNING: failed to download PDF donate banner ({e}); "
+                  f"title+author page will NOT be replaced for this run.")
+            pdf_banner_path = None
+
     pending = list_pending_books(fmt, existing_names)
 
     # ⚠️ TESTING MODE: শুধু প্রথম ৫টা বই build হবে, বাকিগুলো এখন skip।
@@ -487,7 +602,10 @@ def main():
                 print(f"[{slug}] 4/5: building temp epub...", flush=True)
                 tmp_epub = os.path.join(work_dir, f"{slug}.epub")
                 build_epub(b, html_files, cover_path, css_path, tmp_epub, extract_dir=extract_dir)
-                
+
+                if fmt == "pdf" and pdf_banner_path:
+                    customize_pdf_title_page(tmp_epub, pdf_banner_path)
+
                 print(f"[{slug}] 5/5: building {fmt.upper()}...", flush=True)
                 out_path = os.path.join(out_dir, f"{slug}.{EXT[fmt]}")
                 build_pdf_or_mobi(tmp_epub, out_path, fmt)
