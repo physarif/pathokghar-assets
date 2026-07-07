@@ -365,7 +365,10 @@ def build_pdf_or_mobi(epub_path, out_path, fmt):
             "--pdf-sans-family", "Noto Sans Bengali",
             "--pdf-mono-family", "Noto Sans Mono",
             "--pdf-standard-font", "serif",
-            "--paper-size", "a6",  # A6 is narrow/mobile-like; CSS handles margins
+            # ফোনের aspect ratio-র কাছাকাছি (প্রায় 1:1.9) custom page size
+            # A6 (105x148mm, ratio 1:1.41)-এর চেয়ে লম্বা, পড়তে বেশি স্বাভাবিক লাগবে
+            "--custom-size", "100x190",
+            "--unit", "millimeter",
             "--pdf-mono-font-size", "16",
             # PDF-এর জন্য আসল margin flag এগুলো (generic --margin-* PDF-এ
             # ignore হয়ে যায়, Calibre নিজের PDF page margin ব্যবহার করে,
