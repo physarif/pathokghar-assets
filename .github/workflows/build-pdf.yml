@@ -29,6 +29,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install Python deps
+        run: pip install pypdf
+
       - name: Build new pdf books
         env:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
@@ -40,8 +43,10 @@ jobs:
         with:
           files: output/pdf/*.pdf
           tag_name: pdf-books
-          name: "PDF Books (পাঠক ঘর)"
+          name: "PDF Books (Latest Build)"
           body: |
-            pathokghar Bengali book collection in PDF format.
+            Pathokghar Bengali book collection in PDF format.
+            📱 Mobile-optimized: cover + title page at A6, chapters at a 9:16 phone-screen ratio, 22px font
+            📚 Includes cover + title page + chapters
           make_latest: true
           token: ${{ secrets.GITHUB_TOKEN }}
