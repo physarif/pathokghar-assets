@@ -124,6 +124,93 @@ def flatten_headings_to_h1(html_path):
             f.write(new_content)
 
 
+BENGALI_DIGITS = str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯")
+
+
+def bengali_number(n):
+    return str(n).translate(BENGALI_DIGITS)
+
+
+H1_BLOCK_RE = re.compile(r"<h1([^>]*)>(.*?)</h1>", re.IGNORECASE | re.DOTALL)
+TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _unescape_html_entities(text):
+    """Decode HTML entities (&nbsp; -> space, &lt; -> <, etc.) and normalize
+    whitespace."""
+    import html as html_lib
+    text = html_lib.unescape(text)
+    text = text.replace("\xa0", " ")  # &nbsp; and non-breaking space
+    text = text.replace("\u200b", "")  # zero-width space
+    return text
+
+
+def first_h1_text(content):
+    """Return the stripped, tag-free text of the first <h1> in the content,
+    or None if there's no <h1> or it has no real text (e.g. it only wraps
+    an image, or is empty/whitespace)."""
+    m = H1_BLOCK_RE.search(content)
+    if not m:
+        return None
+    text = TAG_RE.sub("", m.group(2))  # strip HTML tags
+    text = _unescape_html_entities(text)  # decode entities + normalize spaces
+    text = text.strip()
+    return text or None
+
+
+def ensure_toc_title(html_path, fallback_title):
+    """Guarantee the epub reader's TOC/drawer always has a real, visible
+    entry for this file. Two problems show up in messy book HTML:
+
+    1. The real chapter title isn't in a heading at all (styled as a bold
+       <p>, or baked into an image), so there's no <h1> for pandoc to pull
+       TOC text from -> the chapter is missing from the drawer.
+    2. A leftover/broken <h1> exists (empty, whitespace-only, or only
+       wraps an image with no text) -> since every <h1> is a pandoc split
+       point, this creates an extra phantom "chapter" with a blank or
+       broken-looking TOC entry right next to the real one.
+
+    Fix: demote every h1 that has no real text to a plain <div> (keeping
+    its original content, e.g. a decorative image, intact) so it can't
+    create a phantom TOC entry. Then, if no h1 with real text remains in
+    the file at all, inject one fallback <h1> at the top of the body so
+    the chapter always gets exactly one clean TOC entry."""
+    with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+
+    matches = list(H1_BLOCK_RE.finditer(content))
+    good_exists = False
+    pieces = []
+    last_end = 0
+    for m in matches:
+        pieces.append(content[last_end:m.start()])
+        text = TAG_RE.sub("", m.group(2))
+        text = _unescape_html_entities(text)
+        text = text.strip()
+        if text:
+            good_exists = True
+            pieces.append(m.group(0))  # keep a genuine heading as-is
+        else:
+            attrs = m.group(1) or ""
+            pieces.append(f"<div{attrs}>{m.group(2)}</div>")  # demote, keep content
+        last_end = m.end()
+    pieces.append(content[last_end:])
+    new_content = "".join(pieces)
+
+    if not good_exists:
+        injected = f"<h1>{fallback_title}</h1>"
+        body_match = re.search(r"(<body\b[^>]*>)", new_content, re.IGNORECASE)
+        if body_match:
+            insert_at = body_match.end()
+            new_content = new_content[:insert_at] + injected + new_content[insert_at:]
+        else:
+            new_content = injected + new_content
+
+    if new_content != content:
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+
+
 def list_pending_books(fmt, existing_names=None):
     print("Fetching all books...")
     books_raw = fetch_json("books") or {}
@@ -166,10 +253,21 @@ def extract_html_files(zip_path, extract_dir):
     for root, _, files in os.walk(extract_dir):
         for fn in files:
             if fn.lower().endswith((".html", ".htm", ".xhtml")):
-                html_files.append(os.path.join(root, fn))
+                full_path = os.path.join(root, fn)
+                html_files.append(full_path)
+    
+    if not html_files:
+        print(f"  WARNING: No HTML files found in {zip_path}")
+        print(f"  Zip contents (first 20 entries):")
+        with zipfile.ZipFile(zip_path) as z:
+            for name in list(z.namelist())[:20]:
+                print(f"    - {name}")
+        return html_files
+    
     html_files.sort(key=lambda p: natural_sort_key(p, extract_dir))
-    for hf in html_files:
+    for i, hf in enumerate(html_files, start=1):
         flatten_headings_to_h1(hf)
+        ensure_toc_title(hf, f"অধ্যায় {bengali_number(i)}")
     return html_files
 
 
