@@ -273,6 +273,18 @@ def extract_html_files(zip_path, extract_dir):
         return html_files
     
     html_files.sort(key=lambda p: natural_sort_key(p, extract_dir))
+
+    # DEBUG: show exactly what was found and how big each chapter file is,
+    # so we can tell from the Actions log whether the zip's HTML actually
+    # made it into the pipeline before any further processing touches it.
+    print(f"  DEBUG: found {len(html_files)} html file(s) in {zip_path}:")
+    for hf in html_files:
+        try:
+            size = os.path.getsize(hf)
+        except OSError:
+            size = -1
+        print(f"    - {os.path.relpath(hf, extract_dir)} ({size} bytes)")
+
     for i, hf in enumerate(html_files, start=1):
         flatten_headings_to_h1(hf)
         ensure_toc_title(hf, f"অধ্যায় {bengali_number(i)}")
@@ -372,6 +384,15 @@ def _extract_body_inner(html_path):
         content = f.read()
     m = BODY_RE.search(content)
     inner = m.group(1) if m else content
+    # DEBUG: flag files where the <body> regex didn't match (falling back to
+    # the whole file) and files that are suspiciously short/empty after
+    # extraction, since either case would silently produce a blank chapter.
+    if m is None:
+        print(f"    DEBUG: no <body> tag matched in {html_path} "
+              f"(len={len(content)}); using full file content as-is")
+    stripped_len = len(TAG_RE.sub("", inner).strip())
+    print(f"    DEBUG: {os.path.basename(html_path)} -> body inner "
+          f"{len(inner)} chars, {stripped_len} chars of visible text")
     base_dir = os.path.dirname(html_path)
 
     def fix_img(m2):
@@ -436,8 +457,17 @@ def build_pdf_html(book, html_files, cover_path, banner_image_path, css_path, ou
 
     parts.append("</body></html>")
 
+    final_html = "".join(parts)
     with open(out_html_path, "w", encoding="utf-8") as f:
-        f.write("".join(parts))
+        f.write(final_html)
+
+    # DEBUG: total assembled size, and whether the donate/cover sections
+    # actually made it in, so a truncated/near-empty combined HTML file is
+    # obvious in the Actions log before we even get to Playwright.
+    print(f"  DEBUG: assembled {out_html_path} -> {len(final_html)} chars total")
+    print(f"  DEBUG: has cover section: {'cover-page' in final_html}")
+    print(f"  DEBUG: has donate section: {'donate-titlepage' in final_html}")
+    print(f"  DEBUG: chapter sections count: {final_html.count('class=\"chapter\"')}")
 
 
 def render_pdf_with_playwright(html_path, out_path):
