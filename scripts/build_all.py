@@ -401,9 +401,10 @@ def customize_pdf_title_page(epub_path, banner_image_path):
   <div class="donate-banner">
     <img src="{image_filename}" alt="পাঠক ঘর" />
   </div>
-  <p class="donate-footer">
-    <b>পাঠক</b> <span class="donate-gray">ঘর</span> বিজ্ঞাপনমুক্ত রাখতে <b class="donate-red">ডোনেট</b> করুন। <span class="donate-number">01318069471</span> – (<span class="donate-bkash">bKash</span>, <span class="donate-nagad">Nagad</span> – Personal)
-  </p>
+  <div class="donate-footer">
+    <p class="donate-line1"><b>পাঠক</b> <span class="donate-gray">ঘর</span> বিজ্ঞাপনমুক্ত রাখতে <b class="donate-red">ডোনেট</b> করুন।</p>
+    <p class="donate-line2"><span class="donate-number">01318069471</span> – (<span class="donate-bkash">bKash</span>, <span class="donate-nagad">Nagad</span> – Personal)</p>
+  </div>
 </section>"""
 
         xhtml, count = re.subn(
