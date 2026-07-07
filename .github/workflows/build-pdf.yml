@@ -3,7 +3,10 @@ name: Build PDF
 on:
   push:
     paths:
+      - .github/workflows/build-pdf.yml
+      - scripts/build_all.py
       - actions_pdf
+      - styles/pdf.css
   workflow_dispatch: {}
 
 permissions:
