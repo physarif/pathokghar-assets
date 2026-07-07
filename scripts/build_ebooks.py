@@ -477,7 +477,7 @@ def _pdf_common_args():
         "--pdf-page-margin-left", "28.35",
         "--pdf-page-margin-right", "28.35",
         "--pdf-page-margin-top", "17.01",
-        "--pdf-page-margin-bottom", "17.01",
+        "--pdf-page-margin-bottom", "24",
         # উপরের pdf-specific margin flag থাকা সত্ত্বেও Calibre-এর generic
         # --margin-* (ডিফল্ট 5pt প্রতিটা) নীরবে যুক্ত হয়ে যাচ্ছিল —
         # left-এ যোগ হয়ে বামপাশ বেশি চওড়া করে দিচ্ছিল, right থেকে বিয়োগ
@@ -488,6 +488,17 @@ def _pdf_common_args():
         "--margin-right", "0",
         "--margin-top", "0",
         "--margin-bottom", "0",
+        # প্রতি পাতার নিচে: বামে "পাঠক" (bold) + "ঘর" (ধূসর), ডানে পাতা নং
+        "--pdf-footer-template",
+        (
+            '<footer><div style="display:flex; justify-content:space-between; '
+            'align-items:center; width:100%; font-family:\'Noto Sans Bengali\',\'Kalpurush\',sans-serif; '
+            'font-size:14px;">'
+            '<div><span style="font-weight:700; color:#000;">পাঠক</span>'
+            '<span style="color:#888;"> ঘর</span></div>'
+            '<div style="color:#000;">_PAGENUM_</div>'
+            '</div></footer>'
+        ),
     ]
 
 
