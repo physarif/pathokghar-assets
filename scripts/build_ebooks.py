@@ -491,13 +491,9 @@ def _pdf_common_args():
     ]
 
 
-# Front matter (cover + donate/title page) keeps the original print-style
-# A6 size; chapter content instead uses a taller, phone-screen-like 19.5:9
-# ratio. Calibre only applies one page size per conversion, so these are
-# produced as two separate PDFs and merged afterwards (see
-# build_pdf_split_sizes) — a single PDF file can freely mix page sizes.
-PDF_FRONT_SIZE_ARGS = ["--paper-size", "a6"]
-PDF_CONTENT_SIZE_ARGS = ["--custom-size", "100x217", "--unit", "millimeter"]
+# Whole book (cover + donate/title page + chapters) is rendered at a
+# single consistent size: A6, matching the print-style cover artwork.
+PDF_SIZE_ARGS = ["--paper-size", "a6"]
 
 
 def _run_ebook_convert(src_epub, dst_path, extra_args):
@@ -580,41 +576,15 @@ def _merge_pdfs(pdf_paths, out_path):
         writer.write(f)
 
 
-def build_pdf_split_sizes(intermediate_epub_path, out_path, work_dir):
-    """PDF-only. Splits the intermediate epub into:
-      - front matter: ONLY the cover (calibre auto-inserts this from epub
-        metadata even though it's excluded from the spine) -> rendered at
-        A6, matching the print-style cover artwork.
-      - everything else (our donate/title page + chapters) -> rendered at
-        a taller 19.5:9 ratio, closer to an actual phone screen for
-        comfortable reading.
-    Then merges the two resulting PDFs into one file.
-    """
-    front_epub = os.path.join(work_dir, "front.epub")
-    content_epub = os.path.join(work_dir, "content.epub")
-    front_pdf = os.path.join(work_dir, "front.pdf")
-    content_pdf = os.path.join(work_dir, "content.pdf")
-
-    import shutil
-    shutil.copy(intermediate_epub_path, front_epub)
-    shutil.copy(intermediate_epub_path, content_epub)
-
-    # front: keep NO spine items at all -> only the auto-inserted cover page
-    # remains (title_page moves to the 19.5:9 content pass below).
-    _filter_epub_spine(front_epub, keep_only=set())
-    # content: keep every spine item (title_page + chapters), just drop the
-    # cover meta so calibre doesn't duplicate it here too.
-    _filter_epub_spine(content_epub, exclude=set(), strip_cover=True)
-
-    _run_ebook_convert(front_epub, front_pdf, [*_pdf_common_args(), *PDF_FRONT_SIZE_ARGS])
-    _run_ebook_convert(content_epub, content_pdf, [*_pdf_common_args(), *PDF_CONTENT_SIZE_ARGS])
-
-    _merge_pdfs([front_pdf, content_pdf], out_path)
+def build_pdf_single_size(intermediate_epub_path, out_path, work_dir):
+    """PDF-only. Converts the whole book (cover + donate/title page +
+    chapters) in a single calibre pass, all rendered at A6 size."""
+    _run_ebook_convert(intermediate_epub_path, out_path, [*_pdf_common_args(), *PDF_SIZE_ARGS])
 
 
 def build_pdf_or_mobi(epub_path, out_path, fmt, work_dir=None):
     if fmt == "pdf":
-        build_pdf_split_sizes(epub_path, out_path, work_dir)
+        build_pdf_single_size(epub_path, out_path, work_dir)
         return
     # mobi: single pass, no page-size split (mobi reflows, doesn't need it)
     cmd = ["ebook-convert", epub_path, out_path]
