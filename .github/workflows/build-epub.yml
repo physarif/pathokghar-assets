@@ -3,7 +3,10 @@ name: Build EPUB
 on:
   push:
     paths:
+      - .github/workflows/build-epub.yml
+      - scripts/build_all.py
       - actions_epub
+      - styles/epub.css
   workflow_dispatch: {}
 
 permissions:
