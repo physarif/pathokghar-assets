@@ -456,42 +456,163 @@ def customize_pdf_title_page(epub_path, banner_image_path):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def build_pdf_or_mobi(epub_path, out_path, fmt):
-    # No --extra-css here: the intermediate epub was already built with the
-    # target format's css baked in by pandoc (see caller), so this step just
-    # converts container format without a second, possibly-conflicting css.
-    cmd = ["ebook-convert", epub_path, out_path]
+def _pdf_common_args():
+    """Calibre flags shared by every PDF conversion pass (font/margins).
+    Page-size flags (--paper-size / --custom-size) are passed separately
+    per pass since front-matter and chapters now use different sizes."""
+    return [
+        "--pdf-default-font-size", "22",  # larger for mobile reading
+        "--pdf-serif-family", "Noto Serif Bengali",
+        "--pdf-sans-family", "Noto Sans Bengali",
+        "--pdf-mono-family", "Noto Sans Mono",
+        "--pdf-standard-font", "serif",
+        "--pdf-mono-font-size", "16",
+        # --pdf-hyphenate বাদ দেওয়া হলো: Calibre-এর বাংলার জন্য কোনো
+        # hyphenation dictionary নেই, তাই এটা বাংলা টেক্সটে কার্যত কিছুই
+        # করত না। right-edge ক্লিপিং সমস্যার আসল সমাধান হয়েছে pdf.css-এ
+        # (body { overflow-wrap: anywhere; word-break: break-word; })
+        # PDF-এর জন্য আসল margin flag এগুলো
+        # যার default 72pt — তাই এই flag গুলো দিয়েই override করতে হয়
+        # চারপাশে বাফার: বাম-ডান একটু বেশি (4mm ~11.34pt), উপর-নিচ 2mm (~5.67pt)
+        "--pdf-page-margin-left", "11.34",
+        "--pdf-page-margin-right", "11.34",
+        "--pdf-page-margin-top", "5.67",
+        "--pdf-page-margin-bottom", "5.67",
+        # উপরের pdf-specific margin flag থাকা সত্ত্বেও Calibre-এর generic
+        # --margin-* (ডিফল্ট 5pt প্রতিটা) নীরবে যুক্ত হয়ে যাচ্ছিল —
+        # left-এ যোগ হয়ে বামপাশ বেশি চওড়া করে দিচ্ছিল, right থেকে বিয়োগ
+        # হয়ে ডানপাশ সরু করে দিচ্ছিল (পরীক্ষায় নিশ্চিত হওয়া গেছে: left
+        # ~15.9pt vs right ~6.3pt, যদিও দুটোই 11.34pt হওয়ার কথা)।
+        # এখানে শূন্য করে দেওয়ায় দুই পাশ সত্যিকারের সমান হয়।
+        "--margin-left", "0",
+        "--margin-right", "0",
+        "--margin-top", "0",
+        "--margin-bottom", "0",
+    ]
+
+
+# Front matter (cover + donate/title page) keeps the original print-style
+# A6 size; chapter content instead uses a taller, phone-screen-like 9:16
+# ratio. Calibre only applies one page size per conversion, so these are
+# produced as two separate PDFs and merged afterwards (see
+# build_pdf_split_sizes) — a single PDF file can freely mix page sizes.
+PDF_FRONT_SIZE_ARGS = ["--paper-size", "a6"]
+PDF_CONTENT_SIZE_ARGS = ["--custom-size", "100x178", "--unit", "mm"]
+
+
+def _run_ebook_convert(src_epub, dst_path, extra_args):
+    cmd = ["ebook-convert", src_epub, dst_path, *extra_args]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd,
+            output=result.stdout, stderr=result.stderr,
+        )
+
+
+def _filter_epub_spine(epub_path, keep_only=None, exclude=None, strip_cover=False):
+    """Rewrite an epub's <spine> in place to keep only (or exclude) the
+    given itemref idrefs. Manifest entries are left untouched (unused
+    entries are harmless). If strip_cover is True, also removes the
+    <meta name="cover" .../> entry so calibre doesn't auto-insert the
+    cover image as page 1 of this particular conversion pass."""
+    import shutil
+    import tempfile
+
+    tmp_dir = tempfile.mkdtemp(prefix="epub_spine_")
+    try:
+        with zipfile.ZipFile(epub_path) as z:
+            names = z.namelist()
+            z.extractall(tmp_dir)
+
+        opf_path = None
+        for root, _, files in os.walk(tmp_dir):
+            for fn in files:
+                if fn.endswith(".opf"):
+                    opf_path = os.path.join(root, fn)
+        if not opf_path:
+            return
+
+        with open(opf_path, "r", encoding="utf-8") as f:
+            opf = f.read()
+
+        def filter_itemref(m):
+            idref_match = re.search(r'idref="([^"]+)"', m.group(0))
+            idref = idref_match.group(1) if idref_match else None
+            if keep_only is not None:
+                return m.group(0) if idref in keep_only else ""
+            if exclude is not None:
+                return "" if idref in exclude else m.group(0)
+            return m.group(0)
+
+        opf = re.sub(r"<itemref[^>]*/>", filter_itemref, opf)
+
+        if strip_cover:
+            opf = re.sub(r'<meta\s+name="cover"[^/]*/>', "", opf)
+
+        with open(opf_path, "w", encoding="utf-8") as f:
+            f.write(opf)
+
+        rebuilt_path = epub_path + ".rebuilt"
+        with zipfile.ZipFile(rebuilt_path, "w") as zout:
+            zout.write(os.path.join(tmp_dir, "mimetype"), "mimetype", compress_type=zipfile.ZIP_STORED)
+            for name in names:
+                if name == "mimetype":
+                    continue
+                zout.write(os.path.join(tmp_dir, name), name, compress_type=zipfile.ZIP_DEFLATED)
+        os.replace(rebuilt_path, epub_path)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _merge_pdfs(pdf_paths, out_path):
+    """Concatenate PDFs page-by-page. Each source page keeps its own
+    mediabox, so the result can freely mix page sizes (e.g. A6 front
+    matter followed by 9:16 chapter pages)."""
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter()
+    for path in pdf_paths:
+        reader = PdfReader(path)
+        for page in reader.pages:
+            writer.add_page(page)
+    with open(out_path, "wb") as f:
+        writer.write(f)
+
+
+def build_pdf_split_sizes(intermediate_epub_path, out_path, work_dir):
+    """PDF-only. Splits the intermediate epub into:
+      - front matter: cover (calibre auto-inserts this from epub metadata
+        even though it's excluded from the spine) + our donate/title page
+        -> rendered at A6, matching the print-style cover artwork.
+      - chapters -> rendered at a taller 9:16 ratio, closer to an actual
+        phone screen for comfortable reading.
+    Then merges the two resulting PDFs into one file.
+    """
+    front_epub = os.path.join(work_dir, "front.epub")
+    content_epub = os.path.join(work_dir, "content.epub")
+    front_pdf = os.path.join(work_dir, "front.pdf")
+    content_pdf = os.path.join(work_dir, "content.pdf")
+
+    import shutil
+    shutil.copy(intermediate_epub_path, front_epub)
+    shutil.copy(intermediate_epub_path, content_epub)
+
+    _filter_epub_spine(front_epub, keep_only={"title_page_xhtml"})
+    _filter_epub_spine(content_epub, exclude={"title_page_xhtml"}, strip_cover=True)
+
+    _run_ebook_convert(front_epub, front_pdf, [*_pdf_common_args(), *PDF_FRONT_SIZE_ARGS])
+    _run_ebook_convert(content_epub, content_pdf, [*_pdf_common_args(), *PDF_CONTENT_SIZE_ARGS])
+
+    _merge_pdfs([front_pdf, content_pdf], out_path)
+
+
+def build_pdf_or_mobi(epub_path, out_path, fmt, work_dir=None):
     if fmt == "pdf":
-        cmd += [
-            "--pdf-default-font-size", "22",  # larger for mobile reading
-            "--pdf-serif-family", "Noto Serif Bengali",
-            "--pdf-sans-family", "Noto Sans Bengali",
-            "--pdf-mono-family", "Noto Sans Mono",
-            "--pdf-standard-font", "serif",
-            "--paper-size", "a6",
-            "--pdf-mono-font-size", "16",
-            # --pdf-hyphenate বাদ দেওয়া হলো: Calibre-এর বাংলার জন্য কোনো
-            # hyphenation dictionary নেই, তাই এটা বাংলা টেক্সটে কার্যত কিছুই
-            # করত না। right-edge ক্লিপিং সমস্যার আসল সমাধান হয়েছে pdf.css-এ
-            # (body { overflow-wrap: anywhere; word-break: break-word; })
-            # PDF-এর জন্য আসল margin flag এগুলো
-            # যার default 72pt — তাই এই flag গুলো দিয়েই override করতে হয়
-            # চারপাশে বাফার: বাম-ডান একটু বেশি (4mm ~11.34pt), উপর-নিচ 2mm (~5.67pt)
-            "--pdf-page-margin-left", "11.34",
-            "--pdf-page-margin-right", "11.34",
-            "--pdf-page-margin-top", "5.67",
-            "--pdf-page-margin-bottom", "5.67",
-            # উপরের pdf-specific margin flag থাকা সত্ত্বেও Calibre-এর generic
-            # --margin-* (ডিফল্ট 5pt প্রতিটা) নীরবে যুক্ত হয়ে যাচ্ছিল —
-            # left-এ যোগ হয়ে বামপাশ বেশি চওড়া করে দিচ্ছিল, right থেকে বিয়োগ
-            # হয়ে ডানপাশ সরু করে দিচ্ছিল (পরীক্ষায় নিশ্চিত হওয়া গেছে: left
-            # ~15.9pt vs right ~6.3pt, যদিও দুটোই 11.34pt হওয়ার কথা)।
-            # এখানে শূন্য করে দেওয়ায় দুই পাশ সত্যিকারের সমান হয়।
-            "--margin-left", "0",
-            "--margin-right", "0",
-            "--margin-top", "0",
-            "--margin-bottom", "0",
-        ]
+        build_pdf_split_sizes(epub_path, out_path, work_dir)
+        return
+    # mobi: single pass, no page-size split (mobi reflows, doesn't need it)
+    cmd = ["ebook-convert", epub_path, out_path]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise subprocess.CalledProcessError(
@@ -609,7 +730,7 @@ def main():
 
                 print(f"[{slug}] 5/5: building {fmt.upper()}...", flush=True)
                 out_path = os.path.join(out_dir, f"{slug}.{EXT[fmt]}")
-                build_pdf_or_mobi(tmp_epub, out_path, fmt)
+                build_pdf_or_mobi(tmp_epub, out_path, fmt, work_dir=work_dir)
 
             print(f"[{slug}] ✓ DONE -> {out_path}", flush=True)
             succeeded.append(slug)
