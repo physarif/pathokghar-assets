@@ -35,7 +35,7 @@ jobs:
       - name: Build new pdf books
         env:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
-        run: python scripts/build_all.py --format pdf
+        run: python scripts/build_ebooks.py --format pdf
 
       - name: Upload PDFs to Release
         uses: softprops/action-gh-release@v2
