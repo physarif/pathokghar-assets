@@ -1,5 +1,5 @@
 name: Build PDF
- 
+
 on:
   push:
     paths:
@@ -46,6 +46,15 @@ jobs:
         env:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
         run: python scripts/build_ebooks.py --format pdf
+
+      - name: Upload assembled PDF-HTML (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-debug-html
+          path: work/**/*.pdf.html
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload PDFs to Release
         uses: softprops/action-gh-release@v2
