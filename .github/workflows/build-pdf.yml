@@ -34,14 +34,6 @@ jobs:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
         run: python scripts/build_all.py --format pdf
 
-      - name: Commit + push new files
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add output/pdf
-          git diff --cached --quiet && echo "Nothing new to commit" || git commit -m "Add new pdf books [skip ci]"
-          git push
-
       - name: Upload PDFs to Release
         uses: softprops/action-gh-release@v2
         if: always()
