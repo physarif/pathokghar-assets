@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - .github/workflows/build-mobi.yml
-      - scripts/build_all.py
+      - scripts/build_ebooks.py
       - actions_mobi
       - styles/mobi.css
   workflow_dispatch: {}
