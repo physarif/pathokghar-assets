@@ -45,6 +45,12 @@ async function main() {
 
   page.on("console", (msg) => console.log("[page]", msg.text()));
   page.on("pageerror", (err) => console.error("[pageerror]", err));
+  page.on("requestfailed", (request) => {
+    const failure = request.failure();
+    console.log(
+      `[requestfailed] ${request.url()} -- ${failure ? failure.errorText : "unknown error"}`
+    );
+  });
 
   // Tell Paged.js not to auto-run on script load; we start it ourselves
   // after wiring up a reliable "done" signal via the `after` hook (the
