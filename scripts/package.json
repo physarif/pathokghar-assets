@@ -1,0 +1,10 @@
+{
+  "name": "pathokghar-assets",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PDF rendering (Paged.js + Playwright) for the Pathok Ghar ebook build pipeline.",
+  "dependencies": {
+    "pagedjs": "^0.4.3",
+    "playwright": "^1.47.0"
+  }
+}
