@@ -43,11 +43,14 @@ def fetch_json(path):
         return json.load(r)
 
 
-def download(url, dest):
+def download(url, dest, timeout=30):
     req = urllib.request.Request(url, headers=BROWSER_HEADERS)
-    with urllib.request.urlopen(req) as resp, open(dest, "wb") as out:
-        out.write(resp.read())
-        return resp.headers.get("Content-Type", "")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest, "wb") as out:
+            out.write(resp.read())
+            return resp.headers.get("Content-Type", "")
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Download failed (timeout={timeout}s): {e}") from e
 
 
 CONTENT_TYPE_EXT = {
@@ -414,8 +417,10 @@ def main():
         os.makedirs(extract_dir, exist_ok=True)
         try:
             zip_path = os.path.join(work_dir, "book.zip")
-            print(f"[{slug}] downloading zip")
+            print(f"[{slug}] 1/5: downloading zip...", flush=True)
             download(b["zip_url"], zip_path)
+            
+            print(f"[{slug}] 2/5: extracting html...", flush=True)
             html_files = extract_html_files(zip_path, extract_dir)
             if not html_files:
                 print(f"[{slug}] SKIP: no HTML files in zip")
@@ -424,6 +429,7 @@ def main():
 
             cover_path = None
             if b.get("cover_url"):
+                print(f"[{slug}] 3/5: downloading cover...", flush=True)
                 tmp_cover = os.path.join(work_dir, "cover_download")
                 try:
                     content_type = download(b["cover_url"], tmp_cover)
@@ -433,23 +439,30 @@ def main():
                 except Exception as e:
                     print(f"[{slug}] cover download failed: {e}")
                     cover_path = None
+            else:
+                print(f"[{slug}] 3/5: (no cover)", flush=True)
 
             if fmt == "epub":
+                print(f"[{slug}] 4/5: building epub...", flush=True)
                 out_path = os.path.join(out_dir, f"{slug}.epub")
                 build_epub(b, html_files, cover_path, css_path, out_path, extract_dir=extract_dir)
+                print(f"[{slug}] 5/5: done", flush=True)
             else:
                 # pdf / mobi both go through an intermediate epub build
                 # (kept in work/, not committed) so chapter splitting stays
                 # consistent across all three formats.
+                print(f"[{slug}] 4/5: building temp epub...", flush=True)
                 tmp_epub = os.path.join(work_dir, f"{slug}.epub")
                 build_epub(b, html_files, cover_path, os.path.join("styles", "epub.css"), tmp_epub, extract_dir=extract_dir)
+                
+                print(f"[{slug}] 5/5: building {fmt.upper()}...", flush=True)
                 out_path = os.path.join(out_dir, f"{slug}.{EXT[fmt]}")
                 build_pdf_or_mobi(tmp_epub, out_path, css_path, fmt)
 
-            print(f"[{slug}] DONE -> {out_path}")
+            print(f"[{slug}] ✓ DONE -> {out_path}", flush=True)
             succeeded.append(slug)
         except subprocess.CalledProcessError as e:
-            print(f"[{slug}] FAILED (conversion), command: {' '.join(map(str, e.cmd))}")
+            print(f"[{slug}] ✗ FAILED (conversion), command: {' '.join(map(str, e.cmd))}")
             if e.stderr:
                 print(f"[{slug}] --- stderr ---\n{e.stderr}")
             if e.output:
@@ -457,7 +470,7 @@ def main():
             failed.append((slug, "conversion error (see stderr above)"))
             continue
         except Exception as e:
-            print(f"[{slug}] FAILED: {type(e).__name__}: {e}")
+            print(f"[{slug}] ✗ FAILED: {type(e).__name__}: {e}")
             failed.append((slug, f"{type(e).__name__}: {e}"))
             continue
 
