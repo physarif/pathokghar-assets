@@ -73,6 +73,26 @@ async function main() {
     timeout: 10 * 60 * 1000,
   });
 
+  // DEBUG: find out whether Paged.js itself only produced a couple of
+  // page boxes (meaning pagination stopped early inside Paged.js) or
+  // whether it produced all of them and something in the print step is
+  // the one dropping pages.
+  const pageInfo = await page.evaluate(() => {
+    const pages = document.querySelectorAll(".pagedjs_page");
+    return {
+      pagedjsPageCount: pages.length,
+      bodyScrollHeight: document.body.scrollHeight,
+      pagesContainerHeight: document.querySelector(".pagedjs_pages")
+        ? document.querySelector(".pagedjs_pages").scrollHeight
+        : null,
+    };
+  });
+  console.log(
+    `[render_pdf] DEBUG: Paged.js produced ${pageInfo.pagedjsPageCount} ` +
+    `page div(s); body.scrollHeight=${pageInfo.bodyScrollHeight}px; ` +
+    `.pagedjs_pages height=${pageInfo.pagesContainerHeight}px`
+  );
+
   // Playwright's page.pdf() forces "print" media by default. Paged.js lays
   // out each page as its own absolutely-positioned div under "screen"
   // media; if Chromium then applies its own native print pagination on top
