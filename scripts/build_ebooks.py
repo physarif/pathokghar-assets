@@ -477,7 +477,7 @@ def _pdf_common_args():
         "--pdf-page-margin-left", "36.85",
         "--pdf-page-margin-right", "36.85",
         "--pdf-page-margin-top", "17.01",
-        "--pdf-page-margin-bottom", "24",
+        "--pdf-page-margin-bottom", "28",
         # উপরের pdf-specific margin flag থাকা সত্ত্বেও Calibre-এর generic
         # --margin-* (ডিফল্ট 5pt প্রতিটা) নীরবে যুক্ত হয়ে যাচ্ছিল —
         # left-এ যোগ হয়ে বামপাশ বেশি চওড়া করে দিচ্ছিল, right থেকে বিয়োগ
@@ -488,16 +488,29 @@ def _pdf_common_args():
         "--margin-right", "0",
         "--margin-top", "0",
         "--margin-bottom", "0",
-        # প্রতি পাতার নিচে: বামে "পাঠক" (bold) + "ঘর" (ধূসর), ডানে পাতা নং
+        # প্রতি পাতার নিচে: ওপরে একটা পাতলা লাইন, তারপর বামে বইয়ের নাম,
+        # মাঝে বাংলা সংখ্যায় পাতা নং, ডানে "পাঠক ঘর" (pathokghar.pages.dev-এর লিংক)
         "--pdf-footer-template",
         (
-            '<footer><div style="display:flex; justify-content:space-between; '
-            'align-items:center; width:100%; font-family:\'Noto Sans Bengali\',\'Kalpurush\',sans-serif; '
-            'font-size:14px;">'
-            '<div><span style="font-weight:700; color:#000;">পাঠক</span>'
-            '<span style="color:#888;"> ঘর</span></div>'
-            '<div style="color:#000;">_PAGENUM_</div>'
-            '</div></footer>'
+            "<footer>"
+            "<div style=\"border-top:1px solid #ccc; padding-top:6px; "
+            "display:flex; justify-content:space-between; align-items:center; "
+            "width:100%; font-family:'Noto Sans Bengali','Kalpurush',sans-serif; "
+            "font-size:18px; color:#000;\">"
+            "<div>_TITLE_</div>"
+            "<div id=\"pg-num\"></div>"
+            "<div><a href=\"https://pathokghar.pages.dev\" "
+            "style=\"color:#d32f2f; font-weight:700; text-decoration:none;\">পাঠক ঘর</a></div>"
+            "</div>"
+            "<script>"
+            "(function(){"
+            "var bn=['০','১','২','৩','৪','৫','৬','৭','৮','৯'];"
+            "var n=_PAGENUM_;"
+            "var s=String(n).split('').map(function(d){return bn[parseInt(d,10)]||d;}).join('');"
+            "document.getElementById('pg-num').innerHTML=s;"
+            "})();"
+            "</script>"
+            "</footer>"
         ),
     ]
 
