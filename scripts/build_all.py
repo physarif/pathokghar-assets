@@ -367,6 +367,10 @@ def build_pdf_or_mobi(epub_path, out_path, fmt):
             "--pdf-standard-font", "serif",
             "--paper-size", "a6",
             "--pdf-mono-font-size", "16",
+            # justify-করা টেক্সটে ডানপাশের শব্দ মাঝে মাঝে line-width পার হয়ে
+            # কেটে যাচ্ছিল — এই flag প্রয়োজনে লম্বা শব্দ ভেঙে দেবে, right
+            # edge-এ ক্লিপিং বন্ধ হবে
+            "--pdf-hyphenate",
             # PDF-এর জন্য আসল margin flag এগুলো (generic --margin-* PDF-এ
             # ignore হয়ে যায়, Calibre নিজের PDF page margin ব্যবহার করে,
             # যার default 72pt — তাই এই flag গুলো দিয়েই override করতে হয়)
