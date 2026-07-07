@@ -73,6 +73,15 @@ async function main() {
     timeout: 10 * 60 * 1000,
   });
 
+  // Playwright's page.pdf() forces "print" media by default. Paged.js lays
+  // out each page as its own absolutely-positioned div under "screen"
+  // media; if Chromium then applies its own native print pagination on top
+  // of that (because we're in "print" media), the two conflicting layouts
+  // collapse into a single page. Explicitly staying in "screen" media for
+  // the pdf() call is the documented fix for this well-known Paged.js +
+  // headless-Chromium issue.
+  await page.emulateMedia({ media: "screen" });
+
   await page.pdf({
     path: outputPdf,
     printBackground: true,
