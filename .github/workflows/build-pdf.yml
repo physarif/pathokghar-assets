@@ -38,3 +38,17 @@ jobs:
           git add output/pdf
           git diff --cached --quiet && echo "Nothing new to commit" || git commit -m "Add new pdf books [skip ci]"
           git push
+
+      - name: Upload PDFs to Release
+        uses: softprops/action-gh-release@v2
+        if: always()
+        with:
+          files: output/pdf/*.pdf
+          tag_name: pdf-books-latest
+          name: "PDF Books (Latest Build)"
+          body: |
+            Pathokghar Bengali book collection in PDF format.
+            📱 Mobile-optimized: ~100mm width, 22px font
+            📚 Includes cover + title page + chapters
+          make_latest: true
+          token: ${{ secrets.GITHUB_TOKEN }}
