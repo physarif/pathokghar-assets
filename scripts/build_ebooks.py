@@ -492,8 +492,10 @@ def _pdf_common_args():
 
 
 # Whole book (cover + donate/title page + chapters) is rendered at a
-# single consistent size: A6, matching the print-style cover artwork.
-PDF_SIZE_ARGS = ["--paper-size", "a6"]
+# single consistent size: A4, with a larger font (see styles/pdf.css) for
+# comfortable reading — a named/standard calibre paper size, unlike
+# --custom-size which proved unreliable.
+PDF_SIZE_ARGS = ["--paper-size", "a4"]
 
 
 def _run_ebook_convert(src_epub, dst_path, extra_args):
