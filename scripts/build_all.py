@@ -365,18 +365,16 @@ def build_pdf_or_mobi(epub_path, out_path, fmt):
             "--pdf-sans-family", "Noto Sans Bengali",
             "--pdf-mono-family", "Noto Sans Mono",
             "--pdf-standard-font", "serif",
-            # ফোনের aspect ratio-র কাছাকাছি (প্রায় 1:1.9) custom page size
-            # A6 (105x148mm, ratio 1:1.41)-এর চেয়ে লম্বা, পড়তে বেশি স্বাভাবিক লাগবে
-            "--custom-size", "100x190",
-            "--unit", "millimeter",
+            "--paper-size", "a6",
             "--pdf-mono-font-size", "16",
             # PDF-এর জন্য আসল margin flag এগুলো (generic --margin-* PDF-এ
             # ignore হয়ে যায়, Calibre নিজের PDF page margin ব্যবহার করে,
-            # যার default 72pt — তাই এই flag গুলো দিয়েই শূন্য করতে হবে)
-            "--pdf-page-margin-left", "0",
-            "--pdf-page-margin-right", "0",
-            "--pdf-page-margin-top", "0",
-            "--pdf-page-margin-bottom", "0",
+            # যার default 72pt — তাই এই flag গুলো দিয়েই override করতে হয়)
+            # চারপাশে বাফার: বাম-ডান একটু বেশি (4mm ~11.34pt), উপর-নিচ 2mm (~5.67pt)
+            "--pdf-page-margin-left", "11.34",
+            "--pdf-page-margin-right", "11.34",
+            "--pdf-page-margin-top", "5.67",
+            "--pdf-page-margin-bottom", "5.67",
         ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
