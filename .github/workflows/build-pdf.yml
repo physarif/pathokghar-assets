@@ -48,7 +48,7 @@ jobs:
           name: "PDF Books (Latest Build)"
           body: |
             Pathokghar Bengali book collection in PDF format.
-            📱 Mobile-optimized: ~100mm width, 22px font
-            📚 Includes cover + title page + chapters
+            ðŸ“± Mobile-optimized: ~100mm width, 22px font
+            ðŸ“š Includes cover + title page + chapters
           make_latest: true
           token: ${{ secrets.GITHUB_TOKEN }}
