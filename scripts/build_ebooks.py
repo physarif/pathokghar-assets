@@ -497,7 +497,7 @@ def _pdf_common_args():
 # produced as two separate PDFs and merged afterwards (see
 # build_pdf_split_sizes) — a single PDF file can freely mix page sizes.
 PDF_FRONT_SIZE_ARGS = ["--paper-size", "a6"]
-PDF_CONTENT_SIZE_ARGS = ["--custom-size", "100x217", "--unit", "mm"]
+PDF_CONTENT_SIZE_ARGS = ["--custom-size", "100x217", "--unit", "millimeter"]
 
 
 def _run_ebook_convert(src_epub, dst_path, extra_args):
