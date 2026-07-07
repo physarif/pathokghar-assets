@@ -40,7 +40,7 @@ jobs:
         with:
           files: output/pdf/*.pdf
           tag_name: pdf-books
-          name: "PDF Books (Latest Build)"
+          name: "PDF Books (পাঠক ঘর)"
           body: |
             pathokghar Bengali book collection in PDF format.
           make_latest: true
