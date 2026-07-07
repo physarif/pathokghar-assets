@@ -367,11 +367,13 @@ def build_pdf_or_mobi(epub_path, out_path, fmt):
             "--pdf-standard-font", "serif",
             "--paper-size", "a6",  # A6 is narrow/mobile-like; CSS handles margins
             "--pdf-mono-font-size", "16",
-            # চার দিকের margin একেবারে শূন্য, যাতে লেখা পেজের একদম edge থেকে শুরু হয়
-            "--margin-left", "0",
-            "--margin-right", "0",
-            "--margin-top", "0",
-            "--margin-bottom", "0",
+            # PDF-এর জন্য আসল margin flag এগুলো (generic --margin-* PDF-এ
+            # ignore হয়ে যায়, Calibre নিজের PDF page margin ব্যবহার করে,
+            # যার default 72pt — তাই এই flag গুলো দিয়েই শূন্য করতে হবে)
+            "--pdf-page-margin-left", "0",
+            "--pdf-page-margin-right", "0",
+            "--pdf-page-margin-top", "0",
+            "--pdf-page-margin-bottom", "0",
         ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
