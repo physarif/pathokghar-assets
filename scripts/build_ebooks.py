@@ -461,7 +461,7 @@ def _pdf_common_args():
     Page-size flags (--paper-size / --custom-size) are passed separately
     per pass since front-matter and chapters now use different sizes."""
     return [
-        "--pdf-default-font-size", "36",  # larger for mobile reading
+        "--pdf-default-font-size", "40",  # larger for mobile reading
         "--pdf-serif-family", "Noto Serif Bengali",
         "--pdf-sans-family", "Noto Sans Bengali",
         "--pdf-mono-family", "Noto Sans Mono",
@@ -473,9 +473,9 @@ def _pdf_common_args():
         # (body { overflow-wrap: anywhere; word-break: break-word; })
         # PDF-এর জন্য আসল margin flag এগুলো
         # যার default 72pt — তাই এই flag গুলো দিয়েই override করতে হয়
-        # চারপাশে বাফার: বাম-ডান আরও বেশি (10mm ~28.35pt), উপর-নিচ 6mm (~17.01pt)
-        "--pdf-page-margin-left", "28.35",
-        "--pdf-page-margin-right", "28.35",
+        # চারপাশে বাফার: বাম-ডান আরও বেশি (13mm ~36.85pt), উপর 6mm (~17.01pt)
+        "--pdf-page-margin-left", "36.85",
+        "--pdf-page-margin-right", "36.85",
         "--pdf-page-margin-top", "17.01",
         "--pdf-page-margin-bottom", "24",
         # উপরের pdf-specific margin flag থাকা সত্ত্বেও Calibre-এর generic
