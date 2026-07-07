@@ -582,11 +582,12 @@ def _merge_pdfs(pdf_paths, out_path):
 
 def build_pdf_split_sizes(intermediate_epub_path, out_path, work_dir):
     """PDF-only. Splits the intermediate epub into:
-      - front matter: cover (calibre auto-inserts this from epub metadata
-        even though it's excluded from the spine) + our donate/title page
-        -> rendered at A6, matching the print-style cover artwork.
-      - chapters -> rendered at a taller 9:16 ratio, closer to an actual
-        phone screen for comfortable reading.
+      - front matter: ONLY the cover (calibre auto-inserts this from epub
+        metadata even though it's excluded from the spine) -> rendered at
+        A6, matching the print-style cover artwork.
+      - everything else (our donate/title page + chapters) -> rendered at
+        a taller 9:16 ratio, closer to an actual phone screen for
+        comfortable reading.
     Then merges the two resulting PDFs into one file.
     """
     front_epub = os.path.join(work_dir, "front.epub")
@@ -598,8 +599,12 @@ def build_pdf_split_sizes(intermediate_epub_path, out_path, work_dir):
     shutil.copy(intermediate_epub_path, front_epub)
     shutil.copy(intermediate_epub_path, content_epub)
 
-    _filter_epub_spine(front_epub, keep_only={"title_page_xhtml"})
-    _filter_epub_spine(content_epub, exclude={"title_page_xhtml"}, strip_cover=True)
+    # front: keep NO spine items at all -> only the auto-inserted cover page
+    # remains (title_page moves to the 9:16 content pass below).
+    _filter_epub_spine(front_epub, keep_only=set())
+    # content: keep every spine item (title_page + chapters), just drop the
+    # cover meta so calibre doesn't duplicate it here too.
+    _filter_epub_spine(content_epub, exclude=set(), strip_cover=True)
 
     _run_ebook_convert(front_epub, front_pdf, [*_pdf_common_args(), *PDF_FRONT_SIZE_ARGS])
     _run_ebook_convert(content_epub, content_pdf, [*_pdf_common_args(), *PDF_CONTENT_SIZE_ARGS])
