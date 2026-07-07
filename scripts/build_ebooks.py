@@ -478,6 +478,13 @@ def render_pdf_with_playwright(html_path, out_path):
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "render_pdf.js")
     cmd = ["node", script_path, html_path, out_path]
     result = subprocess.run(cmd, capture_output=True, text=True)
+    # Always surface the node script's own console output (our [page],
+    # [pageerror] and DEBUG lines), not just when it fails — otherwise
+    # everything it logs is silently swallowed on a "successful" run.
+    if result.stdout:
+        print(f"  --- render_pdf.js stdout ---\n{result.stdout}")
+    if result.stderr:
+        print(f"  --- render_pdf.js stderr ---\n{result.stderr}")
     if result.returncode != 0:
         raise subprocess.CalledProcessError(
             result.returncode, cmd,
