@@ -353,10 +353,11 @@ def remove_cover_page_from_reading_order(epub_path):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def build_pdf_or_mobi(epub_path, out_path, css_path, fmt):
+def build_pdf_or_mobi(epub_path, out_path, fmt):
+    # No --extra-css here: the intermediate epub was already built with the
+    # target format's css baked in by pandoc (see caller), so this step just
+    # converts container format without a second, possibly-conflicting css.
     cmd = ["ebook-convert", epub_path, out_path]
-    if css_path and os.path.exists(css_path):
-        cmd.append(f"--extra-css={css_path}")
     if fmt == "pdf":
         cmd += [
             "--pdf-default-font-size", "22",  # larger for mobile reading
@@ -463,14 +464,17 @@ def main():
             else:
                 # pdf / mobi both go through an intermediate epub build
                 # (kept in work/, not committed) so chapter splitting stays
-                # consistent across all three formats.
+                # consistent across all three formats. The intermediate epub
+                # is built directly with the target format's own css (e.g.
+                # pdf.css), baked in by pandoc, so there's no second,
+                # possibly-conflicting --extra-css layer applied later.
                 print(f"[{slug}] 4/5: building temp epub...", flush=True)
                 tmp_epub = os.path.join(work_dir, f"{slug}.epub")
-                build_epub(b, html_files, cover_path, os.path.join("styles", "epub.css"), tmp_epub, extract_dir=extract_dir)
+                build_epub(b, html_files, cover_path, css_path, tmp_epub, extract_dir=extract_dir)
                 
                 print(f"[{slug}] 5/5: building {fmt.upper()}...", flush=True)
                 out_path = os.path.join(out_dir, f"{slug}.{EXT[fmt]}")
-                build_pdf_or_mobi(tmp_epub, out_path, css_path, fmt)
+                build_pdf_or_mobi(tmp_epub, out_path, fmt)
 
             print(f"[{slug}] ✓ DONE -> {out_path}", flush=True)
             succeeded.append(slug)
