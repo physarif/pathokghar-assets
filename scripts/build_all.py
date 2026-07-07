@@ -367,18 +367,27 @@ def build_pdf_or_mobi(epub_path, out_path, fmt):
             "--pdf-standard-font", "serif",
             "--paper-size", "a6",
             "--pdf-mono-font-size", "16",
-            # justify-করা টেক্সটে ডানপাশের শব্দ মাঝে মাঝে line-width পার হয়ে
-            # কেটে যাচ্ছিল — এই flag প্রয়োজনে লম্বা শব্দ ভেঙে দেবে, right
-            # edge-এ ক্লিপিং বন্ধ হবে
-            "--pdf-hyphenate",
-            # PDF-এর জন্য আসল margin flag এগুলো (generic --margin-* PDF-এ
-            # ignore হয়ে যায়, Calibre নিজের PDF page margin ব্যবহার করে,
-            # যার default 72pt — তাই এই flag গুলো দিয়েই override করতে হয়)
+            # --pdf-hyphenate বাদ দেওয়া হলো: Calibre-এর বাংলার জন্য কোনো
+            # hyphenation dictionary নেই, তাই এটা বাংলা টেক্সটে কার্যত কিছুই
+            # করত না। right-edge ক্লিপিং সমস্যার আসল সমাধান হয়েছে pdf.css-এ
+            # (body { overflow-wrap: anywhere; word-break: break-word; })
+            # PDF-এর জন্য আসল margin flag এগুলো
+            # যার default 72pt — তাই এই flag গুলো দিয়েই override করতে হয়
             # চারপাশে বাফার: বাম-ডান একটু বেশি (4mm ~11.34pt), উপর-নিচ 2mm (~5.67pt)
             "--pdf-page-margin-left", "11.34",
             "--pdf-page-margin-right", "11.34",
             "--pdf-page-margin-top", "5.67",
             "--pdf-page-margin-bottom", "5.67",
+            # উপরের pdf-specific margin flag থাকা সত্ত্বেও Calibre-এর generic
+            # --margin-* (ডিফল্ট 5pt প্রতিটা) নীরবে যুক্ত হয়ে যাচ্ছিল —
+            # left-এ যোগ হয়ে বামপাশ বেশি চওড়া করে দিচ্ছিল, right থেকে বিয়োগ
+            # হয়ে ডানপাশ সরু করে দিচ্ছিল (পরীক্ষায় নিশ্চিত হওয়া গেছে: left
+            # ~15.9pt vs right ~6.3pt, যদিও দুটোই 11.34pt হওয়ার কথা)।
+            # এখানে শূন্য করে দেওয়ায় দুই পাশ সত্যিকারের সমান হয়।
+            "--margin-left", "0",
+            "--margin-right", "0",
+            "--margin-top", "0",
+            "--margin-bottom", "0",
         ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
