@@ -492,12 +492,12 @@ def _pdf_common_args():
 
 
 # Front matter (cover + donate/title page) keeps the original print-style
-# A6 size; chapter content instead uses a taller, phone-screen-like 9:16
+# A6 size; chapter content instead uses a taller, phone-screen-like 19.5:9
 # ratio. Calibre only applies one page size per conversion, so these are
 # produced as two separate PDFs and merged afterwards (see
 # build_pdf_split_sizes) — a single PDF file can freely mix page sizes.
 PDF_FRONT_SIZE_ARGS = ["--paper-size", "a6"]
-PDF_CONTENT_SIZE_ARGS = ["--custom-size", "100x178", "--unit", "mm"]
+PDF_CONTENT_SIZE_ARGS = ["--custom-size", "100x217", "--unit", "mm"]
 
 
 def _run_ebook_convert(src_epub, dst_path, extra_args):
@@ -568,7 +568,7 @@ def _filter_epub_spine(epub_path, keep_only=None, exclude=None, strip_cover=Fals
 def _merge_pdfs(pdf_paths, out_path):
     """Concatenate PDFs page-by-page. Each source page keeps its own
     mediabox, so the result can freely mix page sizes (e.g. A6 front
-    matter followed by 9:16 chapter pages)."""
+    matter followed by 19.5:9 chapter pages)."""
     from pypdf import PdfReader, PdfWriter
 
     writer = PdfWriter()
@@ -586,7 +586,7 @@ def build_pdf_split_sizes(intermediate_epub_path, out_path, work_dir):
         metadata even though it's excluded from the spine) -> rendered at
         A6, matching the print-style cover artwork.
       - everything else (our donate/title page + chapters) -> rendered at
-        a taller 9:16 ratio, closer to an actual phone screen for
+        a taller 19.5:9 ratio, closer to an actual phone screen for
         comfortable reading.
     Then merges the two resulting PDFs into one file.
     """
@@ -600,7 +600,7 @@ def build_pdf_split_sizes(intermediate_epub_path, out_path, work_dir):
     shutil.copy(intermediate_epub_path, content_epub)
 
     # front: keep NO spine items at all -> only the auto-inserted cover page
-    # remains (title_page moves to the 9:16 content pass below).
+    # remains (title_page moves to the 19.5:9 content pass below).
     _filter_epub_spine(front_epub, keep_only=set())
     # content: keep every spine item (title_page + chapters), just drop the
     # cover meta so calibre doesn't duplicate it here too.
