@@ -371,15 +371,18 @@ def remove_cover_page_from_reading_order(epub_path):
 
 
 BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.IGNORECASE | re.DOTALL)
-IMG_SRC_RE = re.compile(r'(<img[^>]+src=")([^"]+)(")', re.IGNORECASE)
+IMG_SRC_RE = re.compile(r'(<img[^>]+?src=)(["\'])(.*?)\2', re.IGNORECASE)
 
 
 def _extract_body_inner(html_path):
     """Return a chapter HTML file's <body> inner content, with every
-    relative <img src="..."> rewritten to an absolute file:// path (each
-    chapter file may live in its own extracted subfolder, so once several
-    chapters are concatenated into one combined document a single shared
-    base path no longer works for all of them)."""
+    relative <img src="...">/<img src='...'> rewritten to an absolute
+    file:// path (each chapter file may live in its own extracted
+    subfolder, so once several chapters are concatenated into one combined
+    document a single shared base path no longer works for all of them).
+    Handles both single- and double-quoted src attributes, since some
+    epub-generation tools (Calibre, Sigil, etc.) emit single-quoted
+    attributes on auto-generated files like cover.xhtml."""
     with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
     m = BODY_RE.search(content)
@@ -393,14 +396,22 @@ def _extract_body_inner(html_path):
     stripped_len = len(TAG_RE.sub("", inner).strip())
     print(f"    DEBUG: {os.path.basename(html_path)} -> body inner "
           f"{len(inner)} chars, {stripped_len} chars of visible text")
-    base_dir = os.path.dirname(html_path)
+    # IMPORTANT: base_dir must be absolute. html_path itself is often a
+    # relative path (e.g. "work/<slug>/extracted/OEBPS/Text/x.xhtml"), so
+    # os.path.dirname() on it is still relative — prefixing "file://" onto
+    # a relative path produces an invalid/misresolved URL that the browser
+    # silently fails to load, which was breaking Paged.js pagination.
+    base_dir = os.path.abspath(os.path.dirname(html_path))
 
     def fix_img(m2):
-        prefix, src, suffix = m2.group(1), m2.group(2), m2.group(3)
+        prefix, quote, src = m2.group(1), m2.group(2), m2.group(3)
         if src.startswith(("http://", "https://", "data:", "file://")):
             return m2.group(0)
         abs_path = os.path.normpath(os.path.join(base_dir, urllib.parse.unquote(src)))
-        return f"{prefix}file://{abs_path}{suffix}"
+        if not os.path.exists(abs_path):
+            print(f"    DEBUG: WARNING image not found on disk: {abs_path} "
+                  f"(original src={src!r} in {os.path.basename(html_path)})")
+        return f"{prefix}{quote}file://{abs_path}{quote}"
 
     return IMG_SRC_RE.sub(fix_img, inner)
 
