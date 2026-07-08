@@ -501,10 +501,10 @@ def build_pdf_html(book, html_files, cover_path, banner_image_path, css_path, ou
               f"duplicates: {dupes if dupes else 'none'}")
 
 
-def render_pdf_with_playwright(html_path, out_path):
+def render_pdf(html_path, out_path):
     """PDF-only. Hands the assembled HTML off to scripts/render_pdf.js,
-    which lays it out with the Paged.js polyfill inside a Playwright
-    Chromium instance and prints the result to a PDF."""
+    which uses pagedjs-cli (Paged.js + Puppeteer) to lay it out page by
+    page and print the result to a PDF."""
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "render_pdf.js")
     cmd = ["node", script_path, html_path, out_path]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -636,7 +636,7 @@ def main():
             elif fmt == "pdf":
                 # PDF is built directly from the extracted chapter HTML
                 # (no intermediate epub / pandoc / calibre step) — see
-                # build_pdf_html + render_pdf_with_playwright. Page size,
+                # build_pdf_html + render_pdf (pagedjs-cli). Page size,
                 # margins, headings-start-new-page and the running footer
                 # (book name, Bengali page number, পাঠক ঘর link) are all
                 # plain CSS in styles/pdf.css, laid out by Paged.js inside
@@ -647,7 +647,7 @@ def main():
 
                 print(f"[{slug}] 5/5: rendering PDF (Paged.js + Playwright)...", flush=True)
                 out_path = os.path.join(out_dir, f"{slug}.pdf")
-                render_pdf_with_playwright(combined_html, out_path)
+                render_pdf(combined_html, out_path)
             else:
                 # mobi goes through an intermediate epub build (kept in
                 # work/, not committed) the same way it always has, since
