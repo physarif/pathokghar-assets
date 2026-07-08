@@ -48,7 +48,7 @@ body {
   /* chapter page is 100mm wide (phone ratio), not A4 — 36px was sized for
      an A4-width page and looked huge (only a couple of words per line)
      once the page got this much narrower. 16px fits comfortably. */
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.7; 
   
   /* পরিবর্তন: ওপর, নিচে, ডানে, বামে সবদিকের প্যাডিং এবং মার্জিন সম্পূর্ণ ০ */
