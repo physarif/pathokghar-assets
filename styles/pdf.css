@@ -1,45 +1,12 @@
-/* Mobile-phone reading experience: A4 page, large text, simple layout */
-
-/* CRITICAL: Paged.js needs an explicit @page rule to know the page size/
-   margins and split the document into multiple physical pages. Without
-   this, pagination doesn't happen correctly and the whole book collapses
-   into a single page in the final PDF. */
-@page {
-  size: A4;
-  margin: 15mm 12mm 20mm 12mm;
-}
-
+/* Mobile-phone reading experience: narrow column (A6), large text, simple layout */
 html {
   margin: 0;
   padding: 0;
 }
 
-/* A4 is 297mm tall; content-box height = page height minus our @page
-   top+bottom margins (15mm + 20mm = 35mm) = 262mm. Paged.js's chunking
-   engine does not reliably paginate flexbox/grid containers (a documented
-   limitation — it cannot find valid break points inside flex layout), so
-   full-page sections below use plain block layout + text-align instead of
-   display:flex, and an explicit physical unit (mm) instead of a
-   percentage, both of which were previously causing pagination to stop
-   dead after the first page. */
-
-/* Cover image gets its own full page, followed by a forced page break so
-   it never merges with the donate/title page or the first chapter. */
-.cover-page {
-  height: 262mm;
-  text-align: center;
-  break-after: page;
-  page-break-after: always;
-}
-
-.cover-page img {
-  max-width: 100%;
-  max-height: 262mm;
-}
-
 body {
   font-family: "Noto Serif Bengali", "Kalpurush", serif;
-  font-size: 36px;
+  font-size: 22px;
   line-height: 1.7; 
   
   /* পরিবর্তন: ওপর, নিচে, ডানে, বামে সবদিকের প্যাডিং এবং মার্জিন সম্পূর্ণ ০ */
@@ -54,35 +21,31 @@ body {
 
 h1, h2, h3 {
   font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;
-  color: #d32f2f;
+  color: #222;
   
-  /* শিরোনামের ওপর-নিচের মার্জিনও ০ করে দেওয়া হলো */
+  /* শিরোনামের ওপর-নিচের মার্জিনও ০ করে দেওয়া হলো */
   margin-top: 0;   
   margin-bottom: 0;
   text-align: center;
-
-  /* প্রতিটি heading নতুন পাতা থেকে শুরু হবে */
-  page-break-before: always;
-  break-before: page;
 }
 
 h1 {
-  font-size: 36px;
+  font-size: 24px;
   font-weight: 600;
 }
 
 h2 {
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 600;
 }
 
 h3 {
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 500;
 }
 
 p {
-  /* প্যারাগ্রাফের ওপর-নিচের সব মার্জিন ০ করা হলো যেন লাইনের মাঝে বাড়তি ফাঁকা না থাকে */
+  /* প্যারাগ্রাফের ওপর-নিচের সব মার্জিন ০ করা হলো যেন লাইনের মাঝে বাড়তি ফাঁকা না থাকে */
   margin: 0; 
   text-indent: 0;
   text-align: justify;
@@ -107,24 +70,26 @@ hr {
   width: 25%;
   margin: 1.2em auto;
 }
-
 /* Title page: pandoc's own title+author markup is replaced (in build_all.py,
    customize_pdf_title_page) with a centered banner image and a donation
-   message pinned to the bottom of the page. Plain block layout (no flex) —
-   see the note at the top of this file about Paged.js + flexbox. */
+   message pinned to the bottom of the page. */
 .donate-titlepage {
-  height: 262mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  height: 100vh;
   box-sizing: border-box;
   padding: 4mm 0;
   text-align: center;
-  break-after: page;
-  page-break-after: always;
 }
 
 .donate-banner {
+  flex: 1;
   width: 100%;
-  text-align: center;
-  margin: 30mm 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .donate-banner img {
@@ -140,7 +105,7 @@ hr {
 .donate-footer p {
   margin: 0;
   text-align: center;
-  font-size: 24px;
+  font-size: 15px;
   line-height: 1.5;
 }
 
