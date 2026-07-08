@@ -1,0 +1,10 @@
+{
+  "name": "pathokghar-assets",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "PDF rendering (Paged.js via pagedjs-cli) for the Pathok Ghar ebook build pipeline.",
+  "dependencies": {
+    "pagedjs-cli": "^0.4.3"
+  }
+}
