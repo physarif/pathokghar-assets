@@ -454,8 +454,40 @@ def _pdf_html_head(title, css_path, page_css):
 # width/height instead of relying on the keyword.
 PDF_FRONT_PAGE_CSS = "@page { size: 105mm 148mm; margin: 0; }"
 
-# Chapter content: phone-screen-ratio page.
-PDF_CHAPTERS_PAGE_CSS = "@page { size: 100mm 217mm; margin: 10mm 8mm 14mm 8mm; }"
+# Chapter content: phone-screen-ratio page, plus a running footer showing
+# the book title (left, static), the page number in Bengali digits
+# (center), and the current chapter's name (right, updates per page via
+# the h1 { string-set: chapter-title content(); } rule in pdf.css).
+def _css_escape(s):
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def pdf_chapters_page_css(title):
+    safe_title = _css_escape(title)
+    return (
+        "@page {"
+        "  size: 100mm 217mm;"
+        "  margin: 10mm 8mm 18mm 8mm;"
+        "  @bottom-left {"
+        f'    content: "{safe_title}";'
+        '    font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;'
+        "    font-size: 9px;"
+        "    color: #888;"
+        "  }"
+        "  @bottom-center {"
+        "    content: counter(page, bengali);"
+        '    font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;'
+        "    font-size: 10px;"
+        "    color: #000;"
+        "  }"
+        "  @bottom-right {"
+        "    content: string(chapter-title);"
+        '    font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;'
+        "    font-size: 9px;"
+        "    color: #888;"
+        "  }"
+        "}"
+    )
 
 
 def build_pdf_front_html(book, cover_path, banner_image_path, css_path, out_html_path):
@@ -510,7 +542,7 @@ def build_pdf_chapters_html(book, html_files, css_path, out_html_path):
     pdf.css's default/unnamed @page rule). See build_pdf_front_html for
     why this is a separate document from the cover/donate page."""
     title = book.get("title", "")
-    parts = [_pdf_html_head(title, css_path, PDF_CHAPTERS_PAGE_CSS)]
+    parts = [_pdf_html_head(title, css_path, pdf_chapters_page_css(title))]
 
     for hf in html_files:
         parts.append(f'<section class="chapter">{_extract_body_inner(hf)}</section>\n')
