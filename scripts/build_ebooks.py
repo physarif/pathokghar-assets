@@ -273,6 +273,18 @@ def extract_html_files(zip_path, extract_dir):
         return html_files
     
     html_files.sort(key=lambda p: natural_sort_key(p, extract_dir))
+
+    # DEBUG: show exactly what was found and how big each chapter file is,
+    # so we can tell from the Actions log whether the zip's HTML actually
+    # made it into the pipeline before any further processing touches it.
+    print(f"  DEBUG: found {len(html_files)} html file(s) in {zip_path}:")
+    for hf in html_files:
+        try:
+            size = os.path.getsize(hf)
+        except OSError:
+            size = -1
+        print(f"    - {os.path.relpath(hf, extract_dir)} ({size} bytes)")
+
     for i, hf in enumerate(html_files, start=1):
         flatten_headings_to_h1(hf)
         ensure_toc_title(hf, f"অধ্যায় {bengali_number(i)}")
@@ -358,146 +370,201 @@ def remove_cover_page_from_reading_order(epub_path):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def customize_pdf_title_page(epub_path, banner_image_path):
-    """PDF-only. Pandoc auto-generates a title+author page
-    (EPUB/text/title_page.xhtml, <section class="titlepage">) from the
-    --metadata title/author flags in build_epub(). For PDF we don't want
-    that page at all: we replace its contents with a centered banner image
-    and a donation message pinned to the bottom of the page. epub/mobi are
-    untouched since this is only ever called when fmt == 'pdf'."""
-    import shutil
-    import tempfile
+BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.IGNORECASE | re.DOTALL)
+IMG_SRC_RE = re.compile(r'(<img[^>]+?src=)(["\'])(.*?)\2', re.IGNORECASE)
+ID_ATTR_RE = re.compile(r'\s+id=(["\'])[^"\']*\1', re.IGNORECASE)
 
-    tmp_dir = tempfile.mkdtemp(prefix="epub_titlepage_")
-    try:
-        with zipfile.ZipFile(epub_path) as z:
-            names = z.namelist()
-            z.extractall(tmp_dir)
 
-        title_page_path = None
-        for root, _, files in os.walk(tmp_dir):
-            if "title_page.xhtml" in files:
-                title_page_path = os.path.join(root, "title_page.xhtml")
-                break
-        if not title_page_path:
-            print("  (no title_page.xhtml found, skipping PDF title-page customization)")
-            return
+def _extract_body_inner(html_path):
+    """Return a chapter HTML file's <body> inner content, with every
+    relative <img src="...">/<img src='...'> rewritten to an absolute
+    file:// path (each chapter file may live in its own extracted
+    subfolder, so once several chapters are concatenated into one combined
+    document a single shared base path no longer works for all of them).
+    Handles both single- and double-quoted src attributes, since some
+    epub-generation tools (Calibre, Sigil, etc.) emit single-quoted
+    attributes on auto-generated files like cover.xhtml.
 
-        # Drop the banner image next to title_page.xhtml so a plain relative
-        # <img src="..."> resolves correctly inside the epub package.
-        text_dir = os.path.dirname(title_page_path)
-        ext = sniff_image_ext(banner_image_path) or ".webp"
-        image_filename = f"og-banner{ext}"
-        shutil.copy(banner_image_path, os.path.join(text_dir, image_filename))
-        # New file on disk, not part of the original zip's namelist(), so it
-        # must be added to the rebuild list explicitly below.
-        image_zip_name = os.path.relpath(os.path.join(text_dir, image_filename), tmp_dir)
-        names.append(image_zip_name)
+    Also strips every id="..." attribute. Each chapter file was originally
+    its own standalone epub document, often with auto-generated ids
+    (calibre_pb_1, pgepubid00000, etc.) that are only unique *within that
+    one file*. Once many chapter files are concatenated into a single
+    combined document, identical ids reused across chapters collide into
+    duplicate ids — pagedjs 0.4.x has a known bug where a document with
+    duplicate ids/text nodes silently mis-paginates or stops early. PDF
+    output has no need for in-page anchors, so it's safe to drop them."""
+    with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    m = BODY_RE.search(content)
+    inner = m.group(1) if m else content
+    # DEBUG: flag files where the <body> regex didn't match (falling back to
+    # the whole file) and files that are suspiciously short/empty after
+    # extraction, since either case would silently produce a blank chapter.
+    if m is None:
+        print(f"    DEBUG: no <body> tag matched in {html_path} "
+              f"(len={len(content)}); using full file content as-is")
+    id_count = len(ID_ATTR_RE.findall(inner))
+    inner = ID_ATTR_RE.sub("", inner)
+    stripped_len = len(TAG_RE.sub("", inner).strip())
+    print(f"    DEBUG: {os.path.basename(html_path)} -> body inner "
+          f"{len(inner)} chars, {stripped_len} chars of visible text, "
+          f"stripped {id_count} id attr(s)")
+    # IMPORTANT: base_dir must be absolute. html_path itself is often a
+    # relative path (e.g. "work/<slug>/extracted/OEBPS/Text/x.xhtml"), so
+    # os.path.dirname() on it is still relative — prefixing "file://" onto
+    # a relative path produces an invalid/misresolved URL that the browser
+    # silently fails to load, which was breaking Paged.js pagination.
+    base_dir = os.path.abspath(os.path.dirname(html_path))
 
-        with open(title_page_path, "r", encoding="utf-8") as f:
-            xhtml = f.read()
+    def fix_img(m2):
+        prefix, quote, src = m2.group(1), m2.group(2), m2.group(3)
+        if src.startswith(("http://", "https://", "data:", "file://")):
+            return m2.group(0)
+        abs_path = os.path.normpath(os.path.join(base_dir, urllib.parse.unquote(src)))
+        if not os.path.exists(abs_path):
+            print(f"    DEBUG: WARNING image not found on disk: {abs_path} "
+                  f"(original src={src!r} in {os.path.basename(html_path)})")
+        return f"{prefix}{quote}file://{abs_path}{quote}"
 
-        new_section = f"""<section epub:type="titlepage" class="titlepage donate-titlepage">
-  <div class="donate-banner">
-    <img src="{image_filename}" alt="পাঠক ঘর" />
-  </div>
-  <div class="donate-footer">
-    <p class="donate-line1"><b>পাঠক</b> <span class="donate-gray">ঘর</span> বিজ্ঞাপনমুক্ত রাখতে <b class="donate-red">ডোনেট</b> করুন।</p>
-    <p class="donate-line2"><span class="donate-number">01318069471</span> – (<span class="donate-bkash">bKash</span>, <span class="donate-nagad">Nagad</span> – Personal)</p>
-  </div>
-</section>"""
+    return IMG_SRC_RE.sub(fix_img, inner)
 
-        xhtml, count = re.subn(
-            r'<section epub:type="titlepage" class="titlepage">.*?</section>',
-            new_section,
-            xhtml,
-            flags=re.DOTALL,
+
+def _pdf_html_head(title, css_path, page_css):
+    css_abs = os.path.abspath(css_path)
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="bn">\n'
+        "<head>\n"
+        '<meta charset="utf-8">\n'
+        f"<title>{title}</title>\n"
+        f'<link rel="stylesheet" href="file://{css_abs}">\n'
+        # Injected here (not in pdf.css) because Chromium's print-to-PDF
+        # only honors one @page rule per render — see the note at the top
+        # of styles/pdf.css for why.
+        f"<style>{page_css}</style>\n"
+        "</head>\n"
+        "<body>\n"
+    )
+
+
+# Cover/donate page: A6 dimensions written out explicitly in mm — Chromium's
+# print-to-PDF only recognizes a small hardcoded list of named page-size
+# keywords (confirmed: "A4" works, "A6" silently falls back to US Letter),
+# so named sizes other than that short list must be spelled out as
+# width/height instead of relying on the keyword.
+PDF_FRONT_PAGE_CSS = "@page { size: 105mm 148mm; margin: 0; }"
+
+# Chapter content: phone-screen-ratio page.
+PDF_CHAPTERS_PAGE_CSS = "@page { size: 100mm 217mm; margin: 10mm 8mm 14mm 8mm; }"
+
+
+def build_pdf_front_html(book, cover_path, banner_image_path, css_path, out_html_path):
+    """PDF-only. Assembles just the cover + donate/title page as their own
+    standalone HTML document, at A6 size (styles/pdf.css's named
+    "cover-page" @page rule). Rendered to its own PDF (see render_pdf) and
+    later merged with the chapters PDF (see merge_pdfs) — Chromium's
+    print-to-PDF only supports ONE page size per PDF export, even though
+    Paged.js itself lays every page out correctly at its own size; the two
+    different sizes we want (A6 cover/donate vs. phone-ratio chapters)
+    only survive if they're generated as two separate PDF files and joined
+    together afterwards at the file level, where mixed page sizes are
+    completely normal."""
+    title = book.get("title", "")
+    parts = [_pdf_html_head(title, css_path, PDF_FRONT_PAGE_CSS)]
+
+    if cover_path:
+        cover_abs = os.path.abspath(cover_path)
+        parts.append(
+            f'<section class="cover-page"><img src="file://{cover_abs}" alt="cover"></section>\n'
         )
-        if count == 0:
-            print("  (title_page.xhtml didn't match expected structure, skipping)")
-            return
 
-        with open(title_page_path, "w", encoding="utf-8") as f:
-            f.write(xhtml)
+    if banner_image_path:
+        banner_abs = os.path.abspath(banner_image_path)
+        parts.append(
+            '<section class="donate-titlepage">\n'
+            '  <div class="donate-banner">\n'
+            f'    <img src="file://{banner_abs}" alt="পাঠক ঘর" />\n'
+            "  </div>\n"
+            '  <div class="donate-footer">\n'
+            '    <p class="donate-line1"><b>পাঠক</b> <span class="donate-gray">ঘর</span> '
+            'বিজ্ঞাপনমুক্ত রাখতে <b class="donate-red">ডোনেট</b> করুন।</p>\n'
+            '    <p class="donate-line2"><span class="donate-number">01318069471</span> '
+            '\u2013 (<span class="donate-bkash">bKash</span>, '
+            '<span class="donate-nagad">Nagad</span> \u2013 Personal)</p>\n'
+            "  </div>\n"
+            "</section>\n"
+        )
 
-        # Register the new image in the .opf manifest so it's a proper,
-        # valid part of the epub package (not just a stray file next to
-        # title_page.xhtml).
-        opf_path = None
-        for root, _, files in os.walk(tmp_dir):
-            for fn in files:
-                if fn.endswith(".opf"):
-                    opf_path = os.path.join(root, fn)
-        if opf_path:
-            with open(opf_path, "r", encoding="utf-8") as f:
-                opf = f.read()
-            opf_dir = os.path.dirname(opf_path)
-            image_href = os.path.relpath(os.path.join(text_dir, image_filename), opf_dir).replace(os.sep, "/")
-            media_type = {
-                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
-            }.get(ext, "image/webp")
-            manifest_item = (
-                f'<item id="donate_banner_image" href="{image_href}" media-type="{media_type}" />\n  </manifest>'
-            )
-            opf = opf.replace("</manifest>", manifest_item, 1)
-            with open(opf_path, "w", encoding="utf-8") as f:
-                f.write(opf)
+    parts.append("</body></html>")
+    final_html = "".join(parts)
+    with open(out_html_path, "w", encoding="utf-8") as f:
+        f.write(final_html)
 
-        rebuilt_path = epub_path + ".rebuilt"
-        with zipfile.ZipFile(rebuilt_path, "w") as zout:
-            zout.write(os.path.join(tmp_dir, "mimetype"), "mimetype", compress_type=zipfile.ZIP_STORED)
-            for name in names:
-                if name == "mimetype":
-                    continue
-                zout.write(os.path.join(tmp_dir, name), name, compress_type=zipfile.ZIP_DEFLATED)
-        os.replace(rebuilt_path, epub_path)
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    print(f"  DEBUG: assembled front (cover/donate) html -> {len(final_html)} chars, "
+          f"has cover: {'cover-page' in final_html}, has donate: {'donate-titlepage' in final_html}")
 
 
-def _pdf_common_args():
-    """Calibre flags shared by every PDF conversion pass (font/margins).
-    Page-size flags (--paper-size / --custom-size) are passed separately
-    per pass since front-matter and chapters now use different sizes."""
-    return [
-        "--pdf-default-font-size", "22",  # larger for mobile reading
-        "--pdf-serif-family", "Noto Serif Bengali",
-        "--pdf-sans-family", "Noto Sans Bengali",
-        "--pdf-mono-family", "Noto Sans Mono",
-        "--pdf-standard-font", "serif",
-        "--pdf-mono-font-size", "16",
-        # --pdf-hyphenate বাদ দেওয়া হলো: Calibre-এর বাংলার জন্য কোনো
-        # hyphenation dictionary নেই, তাই এটা বাংলা টেক্সটে কার্যত কিছুই
-        # করত না। right-edge ক্লিপিং সমস্যার আসল সমাধান হয়েছে pdf.css-এ
-        # (body { overflow-wrap: anywhere; word-break: break-word; })
-        # PDF-এর জন্য আসল margin flag এগুলো
-        # যার default 72pt — তাই এই flag গুলো দিয়েই override করতে হয়
-        # চারপাশে বাফার: বাম-ডান একটু বেশি (4mm ~11.34pt), উপর-নিচ 2mm (~5.67pt)
-        "--pdf-page-margin-left", "11.34",
-        "--pdf-page-margin-right", "11.34",
-        "--pdf-page-margin-top", "5.67",
-        "--pdf-page-margin-bottom", "5.67",
-        # উপরের pdf-specific margin flag থাকা সত্ত্বেও Calibre-এর generic
-        # --margin-* (ডিফল্ট 5pt প্রতিটা) নীরবে যুক্ত হয়ে যাচ্ছিল —
-        # left-এ যোগ হয়ে বামপাশ বেশি চওড়া করে দিচ্ছিল, right থেকে বিয়োগ
-        # হয়ে ডানপাশ সরু করে দিচ্ছিল (পরীক্ষায় নিশ্চিত হওয়া গেছে: left
-        # ~15.9pt vs right ~6.3pt, যদিও দুটোই 11.34pt হওয়ার কথা)।
-        # এখানে শূন্য করে দেওয়ায় দুই পাশ সত্যিকারের সমান হয়।
-        "--margin-left", "0",
-        "--margin-right", "0",
-        "--margin-top", "0",
-        "--margin-bottom", "0",
-    ]
+def build_pdf_chapters_html(book, html_files, css_path, out_html_path):
+    """PDF-only. Assembles every chapter (concatenated) as its own
+    standalone HTML document, at the phone-screen-ratio size (styles/
+    pdf.css's default/unnamed @page rule). See build_pdf_front_html for
+    why this is a separate document from the cover/donate page."""
+    title = book.get("title", "")
+    parts = [_pdf_html_head(title, css_path, PDF_CHAPTERS_PAGE_CSS)]
+
+    for hf in html_files:
+        parts.append(f'<section class="chapter">{_extract_body_inner(hf)}</section>\n')
+
+    parts.append("</body></html>")
+    final_html = "".join(parts)
+    with open(out_html_path, "w", encoding="utf-8") as f:
+        f.write(final_html)
+
+    chapter_marker = 'class="chapter"'
+    print(f"  DEBUG: assembled chapters html -> {len(final_html)} chars, "
+          f"chapter sections: {final_html.count(chapter_marker)}")
+    remaining_ids = re.findall(r'\sid=(["\'])([^"\']*)\1', final_html)
+    if remaining_ids:
+        ids_only = [rid for _, rid in remaining_ids]
+        dupes = {i for i in ids_only if ids_only.count(i) > 1}
+        print(f"  DEBUG: {len(ids_only)} id attr(s) remain in chapters html; "
+              f"duplicates: {dupes if dupes else 'none'}")
 
 
-# Front matter (cover + donate/title page) keeps the original print-style
-# A6 size; chapter content instead uses a taller, phone-screen-like 19.5:9
-# ratio. Calibre only applies one page size per conversion, so these are
-# produced as two separate PDFs and merged afterwards (see
-# build_pdf_split_sizes) — a single PDF file can freely mix page sizes.
-PDF_FRONT_SIZE_ARGS = ["--paper-size", "a6"]
-PDF_CONTENT_SIZE_ARGS = ["--custom-size", "100x217", "--unit", "millimeter"]
+def merge_pdfs(pdf_paths, out_path):
+    """Join several PDFs (each internally uniform-sized, e.g. one A6 file
+    and one phone-ratio file) into a single output PDF. Unlike Chromium's
+    print-to-PDF step, the PDF file format itself has no problem with
+    different pages having different sizes, so a plain page-level merge is
+    all that's needed here."""
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for p in pdf_paths:
+        if p and os.path.exists(p):
+            writer.append(p)
+    with open(out_path, "wb") as f:
+        writer.write(f)
+
+def render_pdf(html_path, out_path):
+    """PDF-only. Hands the assembled HTML off to scripts/render_pdf.js,
+    which uses pagedjs-cli (Paged.js + Puppeteer) to lay it out page by
+    page and print the result to a PDF."""
+    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "render_pdf.js")
+    cmd = ["node", script_path, html_path, out_path]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    # Always surface the node script's own console output (our [page],
+    # [pageerror] and DEBUG lines), not just when it fails — otherwise
+    # everything it logs is silently swallowed on a "successful" run.
+    if result.stdout:
+        print(f"  --- render_pdf.js stdout ---\n{result.stdout}")
+    if result.stderr:
+        print(f"  --- render_pdf.js stderr ---\n{result.stderr}")
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, cmd,
+            output=result.stdout, stderr=result.stderr,
+        )
 
 
 def _run_ebook_convert(src_epub, dst_path, extra_args):
@@ -510,121 +577,10 @@ def _run_ebook_convert(src_epub, dst_path, extra_args):
         )
 
 
-def _filter_epub_spine(epub_path, keep_only=None, exclude=None, strip_cover=False):
-    """Rewrite an epub's <spine> in place to keep only (or exclude) the
-    given itemref idrefs. Manifest entries are left untouched (unused
-    entries are harmless). If strip_cover is True, also removes the
-    <meta name="cover" .../> entry so calibre doesn't auto-insert the
-    cover image as page 1 of this particular conversion pass."""
-    import shutil
-    import tempfile
-
-    tmp_dir = tempfile.mkdtemp(prefix="epub_spine_")
-    try:
-        with zipfile.ZipFile(epub_path) as z:
-            names = z.namelist()
-            z.extractall(tmp_dir)
-
-        opf_path = None
-        for root, _, files in os.walk(tmp_dir):
-            for fn in files:
-                if fn.endswith(".opf"):
-                    opf_path = os.path.join(root, fn)
-        if not opf_path:
-            return
-
-        with open(opf_path, "r", encoding="utf-8") as f:
-            opf = f.read()
-
-        def filter_itemref(m):
-            idref_match = re.search(r'idref="([^"]+)"', m.group(0))
-            idref = idref_match.group(1) if idref_match else None
-            if keep_only is not None:
-                return m.group(0) if idref in keep_only else ""
-            if exclude is not None:
-                return "" if idref in exclude else m.group(0)
-            return m.group(0)
-
-        opf = re.sub(r"<itemref[^>]*/>", filter_itemref, opf)
-
-        if strip_cover:
-            opf = re.sub(r'<meta\s+name="cover"[^/]*/>', "", opf)
-
-        with open(opf_path, "w", encoding="utf-8") as f:
-            f.write(opf)
-
-        rebuilt_path = epub_path + ".rebuilt"
-        with zipfile.ZipFile(rebuilt_path, "w") as zout:
-            zout.write(os.path.join(tmp_dir, "mimetype"), "mimetype", compress_type=zipfile.ZIP_STORED)
-            for name in names:
-                if name == "mimetype":
-                    continue
-                zout.write(os.path.join(tmp_dir, name), name, compress_type=zipfile.ZIP_DEFLATED)
-        os.replace(rebuilt_path, epub_path)
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-
-
-def _merge_pdfs(pdf_paths, out_path):
-    """Concatenate PDFs page-by-page. Each source page keeps its own
-    mediabox, so the result can freely mix page sizes (e.g. A6 front
-    matter followed by 19.5:9 chapter pages)."""
-    from pypdf import PdfReader, PdfWriter
-
-    writer = PdfWriter()
-    for path in pdf_paths:
-        reader = PdfReader(path)
-        for page in reader.pages:
-            writer.add_page(page)
-    with open(out_path, "wb") as f:
-        writer.write(f)
-
-
-def build_pdf_split_sizes(intermediate_epub_path, out_path, work_dir):
-    """PDF-only. Splits the intermediate epub into:
-      - front matter: ONLY the cover (calibre auto-inserts this from epub
-        metadata even though it's excluded from the spine) -> rendered at
-        A6, matching the print-style cover artwork.
-      - everything else (our donate/title page + chapters) -> rendered at
-        a taller 19.5:9 ratio, closer to an actual phone screen for
-        comfortable reading.
-    Then merges the two resulting PDFs into one file.
-    """
-    front_epub = os.path.join(work_dir, "front.epub")
-    content_epub = os.path.join(work_dir, "content.epub")
-    front_pdf = os.path.join(work_dir, "front.pdf")
-    content_pdf = os.path.join(work_dir, "content.pdf")
-
-    import shutil
-    shutil.copy(intermediate_epub_path, front_epub)
-    shutil.copy(intermediate_epub_path, content_epub)
-
-    # front: keep NO spine items at all -> only the auto-inserted cover page
-    # remains (title_page moves to the 19.5:9 content pass below).
-    _filter_epub_spine(front_epub, keep_only=set())
-    # content: keep every spine item (title_page + chapters), just drop the
-    # cover meta so calibre doesn't duplicate it here too.
-    _filter_epub_spine(content_epub, exclude=set(), strip_cover=True)
-
-    _run_ebook_convert(front_epub, front_pdf, [*_pdf_common_args(), *PDF_FRONT_SIZE_ARGS])
-    _run_ebook_convert(content_epub, content_pdf, [*_pdf_common_args(), *PDF_CONTENT_SIZE_ARGS])
-
-    _merge_pdfs([front_pdf, content_pdf], out_path)
-
-
-def build_pdf_or_mobi(epub_path, out_path, fmt, work_dir=None):
-    if fmt == "pdf":
-        build_pdf_split_sizes(epub_path, out_path, work_dir)
-        return
-    # mobi: single pass, no page-size split (mobi reflows, doesn't need it)
-    cmd = ["ebook-convert", epub_path, out_path]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, cmd,
-            output=result.stdout, stderr=result.stderr,
-        )
-
+def build_mobi(epub_path, out_path):
+    """MOBI-only: single calibre pass, no page-size concerns (mobi reflows
+    like any other e-reader format)."""
+    _run_ebook_convert(epub_path, out_path, [])
 
 def main():
     ap = argparse.ArgumentParser()
@@ -653,16 +609,19 @@ def main():
     css_path = os.path.join("styles", f"{fmt}.css")
 
     # PDF-only: download the donate banner once up front (same image for
-    # every book), so each book's build just copies it into its own epub.
+    # every book), embedded directly into the assembled donate page HTML.
     pdf_banner_path = None
     if fmt == "pdf":
-        pdf_banner_path = os.path.join(WORK, "donate_banner_download")
+        tmp_banner = os.path.join(WORK, "donate_banner_download")
         try:
-            download(PDF_DONATE_BANNER_URL, pdf_banner_path)
+            download(PDF_DONATE_BANNER_URL, tmp_banner)
+            ext = sniff_image_ext(tmp_banner) or ".webp"
+            pdf_banner_path = os.path.join(WORK, f"donate_banner{ext}")
+            os.replace(tmp_banner, pdf_banner_path)
             print(f"Downloaded PDF donate banner from {PDF_DONATE_BANNER_URL}")
         except Exception as e:
             print(f"WARNING: failed to download PDF donate banner ({e}); "
-                  f"title+author page will NOT be replaced for this run.")
+                  f"donate page will be skipped for this run.")
             pdf_banner_path = None
 
     pending = list_pending_books(fmt, existing_names)
@@ -719,23 +678,50 @@ def main():
                 out_path = os.path.join(out_dir, f"{slug}.epub")
                 build_epub(b, html_files, cover_path, css_path, out_path, extract_dir=extract_dir)
                 print(f"[{slug}] 5/5: done", flush=True)
+            elif fmt == "pdf":
+                # PDF is built directly from the extracted chapter HTML
+                # (no intermediate epub / pandoc / calibre step). Two page
+                # sizes are used — cover+donate at A6, chapters at a
+                # phone-screen ratio — and since Chromium's print-to-PDF
+                # can only output ONE page size per PDF (even though
+                # Paged.js itself lays each page out at its own size
+                # correctly), the two parts are rendered as separate PDFs
+                # and then joined at the file level with merge_pdfs, where
+                # mixed page sizes are completely normal. Page size,
+                # margins and headings-start-new-page are all plain CSS in
+                # styles/pdf.css, laid out by Paged.js via pagedjs-cli.
+                print(f"[{slug}] 4/6: assembling HTML (front + chapters)...", flush=True)
+                front_html = os.path.join(work_dir, f"{slug}.front.pdf.html")
+                chapters_html = os.path.join(work_dir, f"{slug}.chapters.pdf.html")
+                build_pdf_chapters_html(b, html_files, css_path, chapters_html)
+
+                front_pdf = None
+                if cover_path or pdf_banner_path:
+                    build_pdf_front_html(b, cover_path, pdf_banner_path, css_path, front_html)
+                    print(f"[{slug}] 5/6: rendering front (A6) PDF...", flush=True)
+                    front_pdf = os.path.join(work_dir, f"{slug}.front.pdf")
+                    render_pdf(front_html, front_pdf)
+                else:
+                    print(f"[{slug}] 5/6: (no cover/banner, skipping front PDF)", flush=True)
+
+                print(f"[{slug}] 6/6: rendering chapters PDF + merging...", flush=True)
+                chapters_pdf = os.path.join(work_dir, f"{slug}.chapters.pdf")
+                render_pdf(chapters_html, chapters_pdf)
+
+                out_path = os.path.join(out_dir, f"{slug}.pdf")
+                merge_pdfs([front_pdf, chapters_pdf], out_path)
             else:
-                # pdf / mobi both go through an intermediate epub build
-                # (kept in work/, not committed) so chapter splitting stays
-                # consistent across all three formats. The intermediate epub
-                # is built directly with the target format's own css (e.g.
-                # pdf.css), baked in by pandoc, so there's no second,
-                # possibly-conflicting --extra-css layer applied later.
+                # mobi goes through an intermediate epub build (kept in
+                # work/, not committed) the same way it always has, since
+                # mobi readers reflow text and don't need page-size/CSS
+                # Paged Media handling the way PDF does.
                 print(f"[{slug}] 4/5: building temp epub...", flush=True)
                 tmp_epub = os.path.join(work_dir, f"{slug}.epub")
                 build_epub(b, html_files, cover_path, css_path, tmp_epub, extract_dir=extract_dir)
 
-                if fmt == "pdf" and pdf_banner_path:
-                    customize_pdf_title_page(tmp_epub, pdf_banner_path)
-
-                print(f"[{slug}] 5/5: building {fmt.upper()}...", flush=True)
-                out_path = os.path.join(out_dir, f"{slug}.{EXT[fmt]}")
-                build_pdf_or_mobi(tmp_epub, out_path, fmt, work_dir=work_dir)
+                print(f"[{slug}] 5/5: building mobi...", flush=True)
+                out_path = os.path.join(out_dir, f"{slug}.mobi")
+                build_mobi(tmp_epub, out_path)
 
             print(f"[{slug}] ✓ DONE -> {out_path}", flush=True)
             succeeded.append(slug)
