@@ -372,6 +372,7 @@ def remove_cover_page_from_reading_order(epub_path):
 
 BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.IGNORECASE | re.DOTALL)
 IMG_SRC_RE = re.compile(r'(<img[^>]+?src=)(["\'])(.*?)\2', re.IGNORECASE)
+ID_ATTR_RE = re.compile(r'\s+id=(["\'])[^"\']*\1', re.IGNORECASE)
 
 
 def _extract_body_inner(html_path):
@@ -382,7 +383,16 @@ def _extract_body_inner(html_path):
     document a single shared base path no longer works for all of them).
     Handles both single- and double-quoted src attributes, since some
     epub-generation tools (Calibre, Sigil, etc.) emit single-quoted
-    attributes on auto-generated files like cover.xhtml."""
+    attributes on auto-generated files like cover.xhtml.
+
+    Also strips every id="..." attribute. Each chapter file was originally
+    its own standalone epub document, often with auto-generated ids
+    (calibre_pb_1, pgepubid00000, etc.) that are only unique *within that
+    one file*. Once many chapter files are concatenated into a single
+    combined document, identical ids reused across chapters collide into
+    duplicate ids — pagedjs 0.4.x has a known bug where a document with
+    duplicate ids/text nodes silently mis-paginates or stops early. PDF
+    output has no need for in-page anchors, so it's safe to drop them."""
     with open(html_path, "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
     m = BODY_RE.search(content)
@@ -393,9 +403,12 @@ def _extract_body_inner(html_path):
     if m is None:
         print(f"    DEBUG: no <body> tag matched in {html_path} "
               f"(len={len(content)}); using full file content as-is")
+    id_count = len(ID_ATTR_RE.findall(inner))
+    inner = ID_ATTR_RE.sub("", inner)
     stripped_len = len(TAG_RE.sub("", inner).strip())
     print(f"    DEBUG: {os.path.basename(html_path)} -> body inner "
-          f"{len(inner)} chars, {stripped_len} chars of visible text")
+          f"{len(inner)} chars, {stripped_len} chars of visible text, "
+          f"stripped {id_count} id attr(s)")
     # IMPORTANT: base_dir must be absolute. html_path itself is often a
     # relative path (e.g. "work/<slug>/extracted/OEBPS/Text/x.xhtml"), so
     # os.path.dirname() on it is still relative — prefixing "file://" onto
@@ -480,6 +493,12 @@ def build_pdf_html(book, html_files, cover_path, banner_image_path, css_path, ou
     print(f"  DEBUG: has donate section: {'donate-titlepage' in final_html}")
     chapter_marker = 'class="chapter"'
     print(f"  DEBUG: chapter sections count: {final_html.count(chapter_marker)}")
+    remaining_ids = re.findall(r'\sid=(["\'])([^"\']*)\1', final_html)
+    if remaining_ids:
+        ids_only = [rid for _, rid in remaining_ids]
+        dupes = {i for i in ids_only if ids_only.count(i) > 1}
+        print(f"  DEBUG: {len(ids_only)} id attr(s) remain in assembled html; "
+              f"duplicates: {dupes if dupes else 'none'}")
 
 
 def render_pdf_with_playwright(html_path, out_path):
