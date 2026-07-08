@@ -45,7 +45,10 @@ html {
 
 body {
   font-family: "Noto Serif Bengali", "Kalpurush", serif;
-  font-size: 36px;
+  /* chapter page is 100mm wide (phone ratio), not A4 — 36px was sized for
+     an A4-width page and looked huge (only a couple of words per line)
+     once the page got this much narrower. 16px fits comfortably. */
+  font-size: 16px;
   line-height: 1.7; 
   
   /* পরিবর্তন: ওপর, নিচে, ডানে, বামে সবদিকের প্যাডিং এবং মার্জিন সম্পূর্ণ ০ */
@@ -73,17 +76,17 @@ h1, h2, h3 {
 }
 
 h1 {
-  font-size: 36px;
+  font-size: 22px;
   font-weight: 600;
 }
 
 h2 {
-  font-size: 30px;
+  font-size: 19px;
   font-weight: 600;
 }
 
 h3 {
-  font-size: 26px;
+  font-size: 17px;
   font-weight: 500;
 }
 
@@ -146,7 +149,7 @@ hr {
 .donate-footer p {
   margin: 0;
   text-align: center;
-  font-size: 24px;
+  font-size: 15px;
   line-height: 1.5;
 }
 
