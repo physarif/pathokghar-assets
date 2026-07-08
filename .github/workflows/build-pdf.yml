@@ -21,12 +21,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Bengali fonts + Chromium runtime libs
+      - name: Install Bengali fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y fonts-noto-core fonts-noto-extra fonts-lohit-beng-bengali \
-            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
-            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0
+          sudo apt-get install -y fonts-noto-core fonts-noto-extra fonts-lohit-beng-bengali
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,15 +36,30 @@ jobs:
         with:
           node-version: "20"
 
-      # npm install also downloads pagedjs-cli's own bundled Chromium
-      # (via its puppeteer dependency) — no separate browser-install step
-      # needed, unlike the old Playwright-based approach.
+      # ubuntu-latest runners already ship with Google Chrome pre-installed,
+      # so we skip pagedjs-cli's own puppeteer downloading a *second* copy
+      # of Chromium (a large download that was making this step slow/flaky
+      # in earlier runs) and just point it at the one that's already there.
       - name: Install Node deps (Paged.js via pagedjs-cli)
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm install
+
+      - name: Locate pre-installed Chrome
+        id: chrome
+        run: |
+          CHROME_PATH="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || command -v chromium)"
+          if [ -z "$CHROME_PATH" ]; then
+            echo "No pre-installed Chrome/Chromium found on this runner!" >&2
+            exit 1
+          fi
+          echo "Found Chrome at: $CHROME_PATH"
+          echo "path=$CHROME_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Build new pdf books
         env:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.chrome.outputs.path }}
         run: python scripts/build_ebooks.py --format pdf
 
       - name: Upload assembled PDF-HTML (debug)
