@@ -46,7 +46,7 @@ jobs:
           name: "PDF Books (Latest Build)"
           body: |
             Pathokghar Bengali book collection in PDF format.
-            ðŸ“„ A4 page size, large 30px font for comfortable reading
-            ðŸ“š Includes cover + title page + chapters
+            📄 A4 page size, large 30px font for comfortable reading
+            📚 Includes cover + title page + chapters
           make_latest: true
           token: ${{ secrets.GITHUB_TOKEN }}
