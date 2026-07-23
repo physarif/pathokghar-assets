@@ -115,14 +115,12 @@ def _css_escape(s):
 
 def pdf_chapters_page_css(title):
     """Chapter content: phone-screen-ratio page, plus a running footer
-    showing the book title (left, static), the page number in Bengali
-    digits (center), and the current chapter's name (right, updates per
-    page via the h1 { string-set: chapter-title content(); } rule in
-    pdf.css)."""
+    showing the book title (left, static) and the page number in Bengali
+    digits (right)."""
     safe_title = _css_escape(title)
     return (
         "@page {"
-        "  size: 110mm 210mm;"
+        "  size: 100mm 200mm;"
         "  margin: 10mm 8mm 18mm 8mm;"
         "  @bottom-left {"
         f'    content: "{safe_title}";'
@@ -130,18 +128,11 @@ def pdf_chapters_page_css(title):
         "    font-size: 9px;"
         "    color: #888;"
         "  }"
-        "  @bottom-center {"
+        "  @bottom-right {"
         "    content: counter(page, bengali);"
         '    font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;'
         "    font-size: 10px;"
         "    color: #000;"
-        "  }"
-        "  @bottom-right {"
-        '    content: "পাঠক ঘর";'
-        '    font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;'
-        "    font-size: 9px;"
-        "    font-weight: 700;"
-        "    color: #888;"
         "  }"
         "}"
     )
