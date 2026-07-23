@@ -4,7 +4,8 @@ on:
   push:
     paths:
       - .github/workflows/build-pdf.yml
-      - scripts/build_ebooks.py
+      - scripts/generate_pdf.py
+      - scripts/common.py
       - scripts/render_pdf.js
       - package.json
       - actions_pdf
@@ -63,7 +64,7 @@ jobs:
         env:
           FIREBASE_AUTH: ${{ secrets.FIREBASE_DB_AUTH }}
           PUPPETEER_EXECUTABLE_PATH: ${{ steps.chrome.outputs.path }}
-        run: python scripts/build_ebooks.py --format pdf
+        run: python scripts/generate_pdf.py
 
       - name: Upload assembled PDF-HTML (debug)
         if: always()
