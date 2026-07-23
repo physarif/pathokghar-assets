@@ -122,7 +122,7 @@ def pdf_chapters_page_css(title):
     safe_title = _css_escape(title)
     return (
         "@page {"
-        "  size: 100mm 144.7mm;"
+        "  size: 110mm 210mm;"
         "  margin: 10mm 8mm 18mm 8mm;"
         "  @bottom-left {"
         f'    content: "{safe_title}";'
