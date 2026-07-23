@@ -2,7 +2,7 @@
    ratio page (100mm x 217mm), large text, simple layout.
 
    IMPORTANT: the actual @page size rule is NOT here — it's injected as an
-   inline <style> block per rendered HTML document, from build_ebooks.py
+   inline <style> block per rendered HTML document, from generate_pdf.py
    (see build_pdf_front_html / build_pdf_chapters_html). This is because
    Chromium's print-to-PDF only ever honors ONE @page rule per PDF export
    — CSS Paged Media "named pages" (`@page cover-page { size: A6 }` +
@@ -22,20 +22,13 @@ html {
   padding: 0;
 }
 
-/* Running footer (book name / page number / current chapter name) —
-   injected as a per-render @page rule from build_ebooks.py (see
-   _pdf_chapters_page_css), same reason as the size rule above. This part
+/* Running footer (book name / page number) — injected as a per-render
+   @page rule from generate_pdf.py (see pdf_chapters_page_css). This part
    only needs to live here once, globally: বাংলা সংখ্যায় পাতা নং দেখানোর
-   জন্য custom counter-style, আর @bottom-right বক্সে বর্তমান chapter-এর
-   নাম বসানোর জন্য h1-কে "chapter-title" হিসেবে ট্র্যাক করা (flatten_headings_to_h1
-   সব heading-কেই h1 বানিয়ে দেয়, তাই প্রতিটা chapter-শুরুই একটা h1)। */
+   জন্য custom counter-style। */
 @counter-style bengali {
   system: numeric;
   symbols: "০" "১" "২" "৩" "৪" "৫" "৬" "৭" "৮" "৯";
-}
-
-h1 {
-  string-set: chapter-title content();
 }
 
 /* Paged.js's chunking engine does not reliably paginate flexbox/grid
