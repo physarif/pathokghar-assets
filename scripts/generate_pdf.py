@@ -137,9 +137,10 @@ def pdf_chapters_page_css(title):
         "    color: #000;"
         "  }"
         "  @bottom-right {"
-        "    content: string(chapter-title);"
+        '    content: "পাঠক ঘর";'
         '    font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;'
         "    font-size: 9px;"
+        "    font-weight: 700;"
         "    color: #888;"
         "  }"
         "}"
