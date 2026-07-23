@@ -121,7 +121,7 @@ def pdf_chapters_page_css(title):
     return (
         "@page {"
         "  size: 100mm 200mm;"
-        "  margin: 10mm 8mm 18mm 8mm;"
+        "  margin: 10mm 8mm 10mm 8mm;"
         "  @bottom-left {"
         f'    content: "{safe_title}";'
         '    font-family: "Noto Sans Bengali", "Kalpurush", sans-serif;'
