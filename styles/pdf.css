@@ -20,6 +20,10 @@
 html {
   margin: 0;
   padding: 0;
+  /* সাদার বদলে হালকা cream ব্যাকগ্রাউন্ড — চোখের আরাম বাড়ায়, প্রিন্ট/PDF-এ
+     পেজের একদম কিনারা পর্যন্ত এই রঙ যায় (html-এ সেট করা, body-তে না,
+     কারণ body @page margin-এর ভেতরে বসে, কিনারা পর্যন্ত পৌঁছায় না)। */
+  background-color: #faf5ea;
 }
 
 /* Running footer (book name / page number) — injected as a per-render
@@ -68,6 +72,13 @@ body {
   width: 100%;        
   word-spacing: 0.01em;  
   letter-spacing: 0em;  
+
+  /* পেজের চারপাশে পাতলা বর্ডার — box-sizing: border-box দিয়ে border
+     আগের width/max-width গণনার ভেতরেই থাকবে, লেআউট শিফট হবে না।
+     সামান্য padding যোগ করা হলো যেন লেখা বর্ডারের গায়ে না লাগে। */
+  box-sizing: border-box;
+  border: 0.5px solid #d8cfb8;
+  padding: 3mm;
 }
 
 h1, h2, h3 {
